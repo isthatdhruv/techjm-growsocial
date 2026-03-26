@@ -17,6 +17,8 @@ export const QUEUE_NAMES = {
   IMAGE_GEN: 'image-gen',
   // Phase 8: Publishing Pipeline
   PUBLISH: 'publish',
+  // Phase 9: Engagement Tracking
+  ENGAGEMENT_CHECK: 'engagement-check',
 } as const;
 
 // Queue instances
@@ -31,6 +33,7 @@ export const captionGenQueue = new Queue(QUEUE_NAMES.CAPTION_GEN, { connection }
 export const imagePromptGenQueue = new Queue(QUEUE_NAMES.IMAGE_PROMPT_GEN, { connection });
 export const imageGenQueue = new Queue(QUEUE_NAMES.IMAGE_GEN, { connection });
 export const publishQueue = new Queue(QUEUE_NAMES.PUBLISH, { connection });
+export const engagementCheckQueue = new Queue(QUEUE_NAMES.ENGAGEMENT_CHECK, { connection });
 
 // Flow producer for orchestrating multi-step jobs
 export const flowProducer = new FlowProducer({ connection });
@@ -113,4 +116,15 @@ export interface PublishJobData {
   platform: 'linkedin' | 'x';
   scheduledAt: string; // ISO timestamp
   retryCount: number;
+}
+
+// Phase 9: Engagement Tracking
+export interface EngagementCheckJobData {
+  userId: string
+  postId: string
+  platform: 'linkedin' | 'x'
+  externalId: string        // LinkedIn post URN or X tweet ID
+  checkpoint: '2h' | '6h' | '24h' | '48h'
+  accessTokenEnc: string    // Encrypted access token (avoid re-reading DB on each check)
+  orgUrn?: string | null    // For LinkedIn org posts
 }
