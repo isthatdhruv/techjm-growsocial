@@ -15,6 +15,7 @@ import { captionGenWorker } from './jobs/content/caption-gen.job.js';
 import { imagePromptGenWorker } from './jobs/content/image-prompt-gen.job.js';
 import { imageGenWorker } from './jobs/content/image-gen.job.js';
 import { publishWorker } from './jobs/publish/publish.job.js';
+import { engagementCheckWorker } from './jobs/engagement/engagement-check.job.js';
 
 const WORKER_PORT = parseInt(process.env.WORKER_PORT || '3100');
 const startTime = Date.now();
@@ -49,6 +50,7 @@ const allWorkers = [
   imagePromptGenWorker,
   imageGenWorker,
   publishWorker,
+  engagementCheckWorker,
 ];
 
 // Health check HTTP server
@@ -124,6 +126,7 @@ async function main() {
   console.log('  - image-prompt-gen (concurrency: 4, after caption-gen)');
   console.log('  - image-gen (concurrency: 2, after image-prompt-gen)');
   console.log('  - publish (concurrency: 4, rate: 10/min, delayed jobs)');
+  console.log('  - engagement-check (concurrency: 6, rate: 15/min, checkpoints: 2h/6h/24h/48h)');
 }
 
 main().catch((err) => {
