@@ -19,9 +19,10 @@ interface CheckpointData {
 
 interface CheckpointChartProps {
   checkpoints: CheckpointData[]
+  id?: string
 }
 
-export function CheckpointChart({ checkpoints }: CheckpointChartProps) {
+export function CheckpointChart({ checkpoints, id = 'default' }: CheckpointChartProps) {
   if (!checkpoints.length) {
     return <div className="flex h-[120px] items-center justify-center text-xs text-text-muted/40">No checkpoint data</div>
   }
@@ -31,15 +32,15 @@ export function CheckpointChart({ checkpoints }: CheckpointChartProps) {
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={checkpoints} margin={{ top: 5, right: 5, bottom: 0, left: -20 }}>
           <defs>
-            <linearGradient id="cpLikes" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={`cp-likes-${id}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
               <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
             </linearGradient>
-            <linearGradient id="cpComments" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={`cp-comments-${id}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
               <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
             </linearGradient>
-            <linearGradient id="cpShares" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={`cp-shares-${id}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
               <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
             </linearGradient>
@@ -64,9 +65,9 @@ export function CheckpointChart({ checkpoints }: CheckpointChartProps) {
             }}
             labelStyle={{ color: 'rgba(255,255,255,0.7)' }}
           />
-          <Area type="monotone" dataKey="likes" stroke="#3b82f6" fill="url(#cpLikes)" strokeWidth={1.5} name="Likes" />
-          <Area type="monotone" dataKey="comments" stroke="#22c55e" fill="url(#cpComments)" strokeWidth={1.5} name="Comments" />
-          <Area type="monotone" dataKey="shares" stroke="#f59e0b" fill="url(#cpShares)" strokeWidth={1.5} name="Shares" />
+          <Area type="monotone" dataKey="likes" stroke="#3b82f6" fill={`url(#cp-likes-${id})`} strokeWidth={1.5} name="Likes" />
+          <Area type="monotone" dataKey="comments" stroke="#22c55e" fill={`url(#cp-comments-${id})`} strokeWidth={1.5} name="Comments" />
+          <Area type="monotone" dataKey="shares" stroke="#f59e0b" fill={`url(#cp-shares-${id})`} strokeWidth={1.5} name="Shares" />
         </AreaChart>
       </ResponsiveContainer>
     </div>

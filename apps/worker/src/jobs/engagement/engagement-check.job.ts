@@ -2,7 +2,7 @@ import { Worker, Job } from 'bullmq'
 import { db, posts, topicPerformance, platformConnections, decrypt } from '@techjm/db'
 import { eq, and } from 'drizzle-orm'
 import { connection } from '../../redis.js'
-import { type EngagementCheckJobData } from '../../queues.js'
+import { QUEUE_NAMES, type EngagementCheckJobData } from '../../queues.js'
 import { fetchLinkedInMetrics } from './linkedin-metrics.js'
 import { fetchXMetrics } from './x-metrics.js'
 
@@ -130,7 +130,7 @@ async function processEngagementCheck(job: Job<EngagementCheckJobData>) {
 }
 
 export const engagementCheckWorker = new Worker<EngagementCheckJobData>(
-  'engagement-check',
+  QUEUE_NAMES.ENGAGEMENT_CHECK,
   processEngagementCheck,
   {
     connection,

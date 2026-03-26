@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { GlassCard } from '../../../components/glass-card';
 import { EngagementChart } from '../../../components/analytics/EngagementChart';
@@ -353,9 +353,8 @@ export default function AnalyticsPage() {
                       const isExpanded = expandedPostId === post.id;
                       const latest = post.checkpoints[0];
                       return (
-                        <>
+                        <React.Fragment key={post.id}>
                           <tr
-                            key={post.id}
                             onClick={() =>
                               setExpandedPostId(isExpanded ? null : post.id)
                             }
@@ -409,6 +408,7 @@ export default function AnalyticsPage() {
                                       Engagement over time
                                     </p>
                                     <CheckpointChart
+                                      id={post.id}
                                       checkpoints={post.checkpoints.map((cp) => ({
                                         checkpoint: cp.checkpoint,
                                         likes: cp.likes,
@@ -436,7 +436,7 @@ export default function AnalyticsPage() {
                               </td>
                             </tr>
                           )}
-                        </>
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
