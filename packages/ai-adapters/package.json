@@ -3,12 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "src/types.ts",
-  "types": "src/types.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@google/generative-ai": "^0.24.0",
+    "@mistralai/mistralai": "^1.5.0",
+    "openai": "^4.85.0",
+    "replicate": "^1.0.0",
+    "rss-parser": "^3.13.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
   }
 }

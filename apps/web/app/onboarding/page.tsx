@@ -1,10 +1,28 @@
-export default function OnboardingPage() {
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/use-auth';
+
+export default function OnboardingIndex() {
+  const { loading, onboardingStep } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (onboardingStep === 'complete') {
+      router.replace('/dashboard');
+      return;
+    }
+
+    const step = parseInt(onboardingStep || '1');
+    router.replace(`/onboarding/step-${isNaN(step) ? 1 : step}`);
+  }, [loading, onboardingStep, router]);
+
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-white">Onboarding</h1>
-        <p className="mt-4 text-text-muted">Onboarding wizard coming in Phase 4</p>
-      </div>
-    </main>
+    <div className="flex min-h-[50vh] items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+    </div>
   );
 }

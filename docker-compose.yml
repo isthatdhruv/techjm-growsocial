@@ -10,6 +10,7 @@ services:
       POSTGRES_DB: techjm
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -45,6 +46,31 @@ services:
       - caddy_config:/config
     networks:
       - app-network
+
+  postiz:
+    image: ghcr.io/gitroomhq/postiz-app:latest
+    container_name: techjm-postiz
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postiz
+      REDIS_URL: redis://redis:6379
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:5000
+      JWT_SECRET: change-this-postiz-jwt-secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   uptime-kuma:
     image: louislam/uptime-kuma
