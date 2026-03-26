@@ -1,0 +1,8 @@
+localhost {
+	handle /api/* {
+		reverse_proxy worker:3100
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}
