@@ -15,7 +15,7 @@ export function MobileNav() {
     { label: 'Topics', href: '/dashboard/topics' },
     { label: 'Content', href: '/dashboard/content' },
     { label: 'Queue', href: '/dashboard/queue' },
-    { label: 'Analytics', href: '#' },
+    { label: 'Analytics', href: '/dashboard/analytics' },
     { label: 'Settings', href: '#' },
   ];
 

@@ -266,9 +266,17 @@ export default function DashboardPage() {
             <span className="text-text-muted/40">{iconMap.arrow}</span>
           </GlassCard>
         </Link>
-        <GlassCard className="flex items-center justify-center p-6 opacity-40">
-          <p className="text-sm text-text-muted">Analytics (Phase 9)</p>
-        </GlassCard>
+        <Link href="/dashboard/analytics">
+          <GlassCard hover className="flex items-center justify-between p-6">
+            <div>
+              <p className="text-sm font-semibold text-white">Analytics</p>
+              <p className="mt-0.5 text-xs text-text-muted">
+                View engagement metrics and insights
+              </p>
+            </div>
+            <span className="text-text-muted/40">{iconMap.arrow}</span>
+          </GlassCard>
+        </Link>
       </div>
     </div>
   );
