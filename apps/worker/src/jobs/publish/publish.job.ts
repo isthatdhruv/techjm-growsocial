@@ -2,7 +2,7 @@ import { Worker, Job } from 'bullmq';
 import { db, posts, platformConnections, decrypt } from '@techjm/db';
 import { eq, and } from 'drizzle-orm';
 import { connection } from '../../redis.js';
-import { publishQueue, QUEUE_NAMES, type PublishJobData } from '../../queues.js';
+import { publishQueue, engagementCheckQueue, QUEUE_NAMES, type PublishJobData, type EngagementCheckJobData } from '../../queues.js';
 import { publishViaPostiz } from './postiz-client.js';
 import { publishDirect } from './direct-publisher.js';
 import { logPublishAttempt } from './log.js';
@@ -101,7 +101,38 @@ async function processPublish(job: Job<PublishJobData>) {
 
     job.log(`Published successfully: ${platform} post ${externalId}`);
 
-    // TODO (Phase 9): Queue engagement tracking jobs at T+2h, T+6h, T+24h, T+48h
+    // ═══ Phase 9: Queue 4 engagement check jobs ═══
+    const CHECKPOINTS = [
+      { checkpoint: '2h' as const, delay: 2 * 60 * 60 * 1000 },
+      { checkpoint: '6h' as const, delay: 6 * 60 * 60 * 1000 },
+      { checkpoint: '24h' as const, delay: 24 * 60 * 60 * 1000 },
+      { checkpoint: '48h' as const, delay: 48 * 60 * 60 * 1000 },
+    ]
+
+    for (const { checkpoint, delay } of CHECKPOINTS) {
+      await engagementCheckQueue.add(
+        `engagement-${postId}-${checkpoint}`,
+        {
+          userId,
+          postId,
+          platform,
+          externalId: externalId!,
+          checkpoint,
+          accessTokenEnc: conn.accessTokenEnc,
+          orgUrn: conn.orgUrn || null,
+        } satisfies EngagementCheckJobData,
+        {
+          delay,
+          jobId: `engagement-${postId}-${checkpoint}`,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 60000 },
+          removeOnComplete: { count: 1000 },
+          removeOnFail: { count: 500 },
+        }
+      )
+    }
+
+    job.log(`Queued 4 engagement checks: 2h, 6h, 24h, 48h for post ${postId}`)
 
     return { success: true, externalId, platform };
   } else {
