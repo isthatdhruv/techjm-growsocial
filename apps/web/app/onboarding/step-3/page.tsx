@@ -49,7 +49,7 @@ const providerLabels: Record<string, string> = {
 };
 
 export default function Step3AIKeys() {
-  const { user, loading } = useAuth();
+  const { user, loading, setOnboardingStep } = useAuth();
   const router = useRouter();
   const { nicheData, setAIKeysData } = useOnboardingStore();
 
@@ -193,6 +193,7 @@ export default function Step3AIKeys() {
       }
 
       setAIKeysData({ validatedProviders, modelConfig });
+      setOnboardingStep('4');
       router.push('/onboarding/step-4');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');

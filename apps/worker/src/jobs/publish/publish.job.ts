@@ -6,6 +6,8 @@ import { publishQueue, engagementCheckQueue, QUEUE_NAMES, type PublishJobData, t
 import { publishViaPostiz } from './postiz-client.js';
 import { publishDirect } from './direct-publisher.js';
 import { logPublishAttempt } from './log.js';
+import { notifyPublishResult } from '../../notifications/publish-notify.js';
+import { withErrorHandling } from '../../lib/error-handler.js';
 
 // Retry delays: 1 min, 5 min, 15 min
 const RETRY_DELAYS = [60_000, 300_000, 900_000];
@@ -134,6 +136,13 @@ async function processPublish(job: Job<PublishJobData>) {
 
     job.log(`Queued 4 engagement checks: 2h, 6h, 24h, 48h for post ${postId}`)
 
+    // Phase 11: Telegram notification
+    await notifyPublishResult(userId, true, {
+      platform,
+      caption: post.caption || '',
+      externalUrl: `https://${platform === 'linkedin' ? 'linkedin.com/feed/update/' : 'x.com/i/web/status/'}${externalId}`,
+    })
+
     return { success: true, externalId, platform };
   } else {
     // Retry or give up
@@ -159,14 +168,21 @@ async function processPublish(job: Job<PublishJobData>) {
         .where(eq(posts.id, postId));
 
       job.log(`All retries exhausted. Post marked as failed.`);
-      // TODO (Phase 11): Send Telegram failure notification
+
+      // Phase 11: Telegram failure notification
+      await notifyPublishResult(userId, false, {
+        platform,
+        caption: post.caption || '',
+        error: publishError || 'All retries exhausted',
+        retryCount,
+      })
 
       return { success: false, willRetry: false, error: publishError };
     }
   }
 }
 
-export const publishWorker = new Worker(QUEUE_NAMES.PUBLISH, processPublish, {
+export const publishWorker = new Worker(QUEUE_NAMES.PUBLISH, withErrorHandling('publish', processPublish), {
   connection,
   concurrency: 4,
   limiter: {

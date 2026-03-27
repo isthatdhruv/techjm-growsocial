@@ -6,6 +6,7 @@ import { eq, gt, lt } from 'drizzle-orm';
 import { connection } from '../../redis.js';
 import { QUEUE_NAMES } from '../../queues.js';
 import type { FallbackGroundingJobData } from '../../queues.js';
+import { withErrorHandling } from '../../lib/error-handler.js';
 
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 
@@ -81,7 +82,7 @@ async function processFallbackGrounding(job: Job<FallbackGroundingJobData>) {
 
 export const fallbackGroundingWorker = new Worker(
   QUEUE_NAMES.FALLBACK_GROUNDING,
-  processFallbackGrounding,
+  withErrorHandling('fallback-grounding', processFallbackGrounding),
   { connection, concurrency: 1 },
 );
 

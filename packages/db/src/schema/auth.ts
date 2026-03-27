@@ -1,22 +1,7 @@
-import { pgTable, pgEnum, uuid, varchar, text, timestamp } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
-import { userNicheProfiles } from './niche';
-import { userAiKeys, userModelConfig } from './ai-keys';
-import { platformConnections } from './connections';
-import { rawTopics } from './topics';
-import { scoredTopics, scoringWeights } from './scoring';
-import { posts } from './posts';
+import { pgTable, uuid, varchar, text, timestamp } from 'drizzle-orm/pg-core';
+import { onboardingStepEnum, planEnum } from './_enums';
 
-export const onboardingStepEnum = pgEnum('onboarding_step', [
-  '1',
-  '2',
-  '3',
-  '4',
-  '5',
-  'complete',
-]);
-
-export const planEnum = pgEnum('plan', ['free', 'starter', 'pro', 'admin']);
+export { onboardingStepEnum, planEnum };
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -29,20 +14,3 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
-
-export const usersRelations = relations(users, ({ one, many }) => ({
-  nicheProfile: one(userNicheProfiles, {
-    fields: [users.id],
-    references: [userNicheProfiles.userId],
-  }),
-  aiKeys: many(userAiKeys),
-  modelConfig: one(userModelConfig, {
-    fields: [users.id],
-    references: [userModelConfig.userId],
-  }),
-  platformConnections: many(platformConnections),
-  rawTopics: many(rawTopics),
-  scoredTopics: many(scoredTopics),
-  posts: many(posts),
-  scoringWeights: many(scoringWeights),
-}));

@@ -1,15 +1,8 @@
-import { pgTable, pgEnum, uuid, varchar, text, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { pgTable, uuid, varchar, text, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
 import { users } from './auth';
-import { aiProviderEnum } from './ai-keys';
-import { scoredTopics } from './scoring';
+import { aiProviderEnum, consensusTierEnum } from './_enums';
 
-export const consensusTierEnum = pgEnum('consensus_tier', [
-  'definitive',
-  'strong',
-  'confirmed',
-  'experimental',
-]);
+export { consensusTierEnum };
 
 export const rawTopics = pgTable('raw_topics', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -32,14 +25,6 @@ export const rawTopics = pgTable('raw_topics', {
   discoveryRunId: uuid('discovery_run_id'),
   fetchedAt: timestamp('fetched_at').defaultNow(),
 });
-
-export const rawTopicsRelations = relations(rawTopics, ({ one, many }) => ({
-  user: one(users, {
-    fields: [rawTopics.userId],
-    references: [users.id],
-  }),
-  scoredTopics: many(scoredTopics),
-}));
 
 export const fallbackGroundingCache = pgTable('fallback_grounding_cache', {
   id: uuid('id').primaryKey().defaultRandom(),

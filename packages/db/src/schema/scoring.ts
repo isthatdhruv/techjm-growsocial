@@ -10,10 +10,8 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
 import { users } from './auth';
 import { rawTopics } from './topics';
-import { posts } from './posts';
 
 export const scoredTopics = pgTable('scored_topics', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -46,22 +44,9 @@ export const scoredTopics = pgTable('scored_topics', {
   scoredAt: timestamp('scored_at').defaultNow(),
 });
 
-export const scoredTopicsRelations = relations(scoredTopics, ({ one, many }) => ({
-  rawTopic: one(rawTopics, {
-    fields: [scoredTopics.rawTopicId],
-    references: [rawTopics.id],
-  }),
-  user: one(users, {
-    fields: [scoredTopics.userId],
-    references: [users.id],
-  }),
-  posts: many(posts),
-  feedback: many(scoringFeedback),
-}));
-
 export const scoringFeedback = pgTable('scoring_feedback', {
   id: uuid('id').primaryKey().defaultRandom(),
-  postId: uuid('post_id').references(() => posts.id),
+  postId: uuid('post_id'), // FK to posts.id (defined in _relations.ts to avoid circular import)
   topicId: uuid('topic_id').references(() => scoredTopics.id),
   userId: uuid('user_id')
     .references(() => users.id)
@@ -72,21 +57,6 @@ export const scoringFeedback = pgTable('scoring_feedback', {
   weightsSnapshot: jsonb('weights_snapshot'), // Snapshot of scoring_weights at time of prediction
   createdAt: timestamp('created_at').defaultNow(),
 });
-
-export const scoringFeedbackRelations = relations(scoringFeedback, ({ one }) => ({
-  post: one(posts, {
-    fields: [scoringFeedback.postId],
-    references: [posts.id],
-  }),
-  topic: one(scoredTopics, {
-    fields: [scoringFeedback.topicId],
-    references: [scoredTopics.id],
-  }),
-  user: one(users, {
-    fields: [scoringFeedback.userId],
-    references: [users.id],
-  }),
-}));
 
 export const scoringWeights = pgTable(
   'scoring_weights',
@@ -101,10 +71,3 @@ export const scoringWeights = pgTable(
   },
   (table) => [unique('scoring_weights_user_dimension_unique').on(table.userId, table.dimension)],
 );
-
-export const scoringWeightsRelations = relations(scoringWeights, ({ one }) => ({
-  user: one(users, {
-    fields: [scoringWeights.userId],
-    references: [users.id],
-  }),
-}));

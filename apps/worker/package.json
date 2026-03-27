@@ -10,16 +10,24 @@
     "lint": "eslint src/"
   },
   "dependencies": {
+    "@bull-board/api": "^6.6.2",
+    "@bull-board/express": "^6.6.2",
     "@techjm/ai-adapters": "*",
     "@techjm/db": "*",
+    "@techjm/rate-limiter": "*",
     "bullmq": "^5.25.0",
     "cloudinary": "^2.9.0",
+    "dotenv": "^17.3.1",
+    "express": "^4.21.0",
     "ioredis": "^5.4.1",
+    "node-telegram-bot-api": "^0.67.0",
     "string-similarity": "^4.0.4",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.0",
     "@types/node": "^22.10.0",
+    "@types/node-telegram-bot-api": "^0.64.14",
     "@types/string-similarity": "^4.0.2",
     "@types/uuid": "^10.0.0",
     "tsx": "^4.19.0",

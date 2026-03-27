@@ -12,6 +12,7 @@ import {
   type ImageGenJobData,
 } from '../../queues.js';
 import { getAutoSelectedModel } from '../sub-agents/model-selector.js';
+import { withErrorHandling } from '../../lib/error-handler.js';
 
 async function processImagePromptGen(job: Job<ImagePromptGenJobData>) {
   const { userId, scoredTopicId, linkedinPostId, xPostId, captionText } = job.data;
@@ -114,7 +115,7 @@ async function processImagePromptGen(job: Job<ImagePromptGenJobData>) {
   return { imagePrompt: result.prompt, imageProvider, imageModel };
 }
 
-export const imagePromptGenWorker = new Worker(QUEUE_NAMES.IMAGE_PROMPT_GEN, processImagePromptGen, {
+export const imagePromptGenWorker = new Worker(QUEUE_NAMES.IMAGE_PROMPT_GEN, withErrorHandling('image-prompt-gen', processImagePromptGen), {
   connection,
   concurrency: 4,
 });

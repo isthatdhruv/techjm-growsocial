@@ -1,5 +1,4 @@
 import { pgTable, uuid, varchar, text, jsonb, timestamp } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
 import { users } from './auth';
 
 export const userNicheProfiles = pgTable('user_niche_profiles', {
@@ -19,10 +18,3 @@ export const userNicheProfiles = pgTable('user_niche_profiles', {
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
-
-export const userNicheProfilesRelations = relations(userNicheProfiles, ({ one }) => ({
-  user: one(users, {
-    fields: [userNicheProfiles.userId],
-    references: [users.id],
-  }),
-}));

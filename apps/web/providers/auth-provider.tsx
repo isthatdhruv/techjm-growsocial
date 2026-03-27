@@ -15,6 +15,7 @@ export interface AuthContextValue {
   user: User | null;
   loading: boolean;
   onboardingStep: string | null;
+  setOnboardingStep: (step: string) => void;
   signIn: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
@@ -83,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, onboardingStep, signIn, signInWithEmail, signUp, signOut }}
+      value={{ user, loading, onboardingStep, setOnboardingStep, signIn, signInWithEmail, signUp, signOut }}
     >
       {children}
     </AuthContext.Provider>

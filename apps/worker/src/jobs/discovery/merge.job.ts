@@ -5,6 +5,7 @@ import { eq, and, isNotNull } from 'drizzle-orm';
 import { compareTwoStrings } from 'string-similarity';
 import { connection } from '../../redis.js';
 import { QUEUE_NAMES, flowProducer } from '../../queues.js';
+import { withErrorHandling } from '../../lib/error-handler.js';
 import type { DiscoveryMergeJobData, SubAgentJobData, ScoringOrchestratorJobData } from '../../queues.js';
 import { getAutoSelectedModel } from '../sub-agents/model-selector.js';
 
@@ -287,7 +288,7 @@ async function processDiscoveryMerge(job: Job<DiscoveryMergeJobData>) {
 
 export const discoveryMergeWorker = new Worker(
   QUEUE_NAMES.DISCOVERY_MERGE,
-  processDiscoveryMerge,
+  withErrorHandling(QUEUE_NAMES.DISCOVERY_MERGE, processDiscoveryMerge),
   { connection, concurrency: 4 },
 );
 

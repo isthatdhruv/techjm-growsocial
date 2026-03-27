@@ -1,62 +1,59 @@
-// Auth
+// Enums
 export {
-  users,
-  usersRelations,
   onboardingStepEnum,
   planEnum,
-} from './auth';
-
-// Niche
-export {
-  userNicheProfiles,
-  userNicheProfilesRelations,
-} from './niche';
-
-// AI Keys & Model Config
-export {
-  userAiKeys,
-  userAiKeysRelations,
-  userModelConfig,
-  userModelConfigRelations,
   aiProviderEnum,
-} from './ai-keys';
-
-// Platform Connections
-export {
-  platformConnections,
-  platformConnectionsRelations,
+  consensusTierEnum,
   platformEnum,
   connectionHealthEnum,
-} from './connections';
+  postStatusEnum,
+  errorCategoryEnum,
+} from './_enums';
+
+// Auth
+export { users } from './auth';
+
+// Niche
+export { userNicheProfiles } from './niche';
+
+// AI Keys & Model Config
+export { userAiKeys, userModelConfig } from './ai-keys';
+
+// Platform Connections
+export { platformConnections } from './connections';
 
 // Recommendations
 export { recommendationMatrix } from './recommendations';
 
 // Topics
-export {
-  rawTopics,
-  rawTopicsRelations,
-  fallbackGroundingCache,
-  consensusTierEnum,
-} from './topics';
+export { rawTopics, fallbackGroundingCache } from './topics';
 
 // Scoring
-export {
-  scoredTopics,
-  scoredTopicsRelations,
-  scoringFeedback,
-  scoringFeedbackRelations,
-  scoringWeights,
-  scoringWeightsRelations,
-} from './scoring';
+export { scoredTopics, scoringFeedback, scoringWeights } from './scoring';
 
 // Posts
+export { posts, publishLog, topicPerformance } from './posts';
+
+// Notifications
+export { notificationPreferences } from './notifications';
+
+// Errors
+export { jobErrors } from './errors';
+
+// Relations (all centralized)
 export {
-  posts,
+  usersRelations,
+  userNicheProfilesRelations,
+  userAiKeysRelations,
+  userModelConfigRelations,
+  platformConnectionsRelations,
+  rawTopicsRelations,
+  scoredTopicsRelations,
+  scoringFeedbackRelations,
+  scoringWeightsRelations,
   postsRelations,
-  publishLog,
   publishLogRelations,
-  topicPerformance,
   topicPerformanceRelations,
-  postStatusEnum,
-} from './posts';
+  notificationPreferencesRelations,
+  jobErrorsRelations,
+} from './_relations';

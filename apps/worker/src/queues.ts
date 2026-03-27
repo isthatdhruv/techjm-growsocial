@@ -19,6 +19,10 @@ export const QUEUE_NAMES = {
   PUBLISH: 'publish',
   // Phase 9: Engagement Tracking
   ENGAGEMENT_CHECK: 'engagement-check',
+  // Phase 10: Adaptive Feedback Loop
+  FEEDBACK_LOOP: 'feedback-loop',
+  // Phase 12: Backup
+  BACKUP: 'backup',
 } as const;
 
 // Queue instances
@@ -34,6 +38,8 @@ export const imagePromptGenQueue = new Queue(QUEUE_NAMES.IMAGE_PROMPT_GEN, { con
 export const imageGenQueue = new Queue(QUEUE_NAMES.IMAGE_GEN, { connection });
 export const publishQueue = new Queue(QUEUE_NAMES.PUBLISH, { connection });
 export const engagementCheckQueue = new Queue(QUEUE_NAMES.ENGAGEMENT_CHECK, { connection });
+export const feedbackLoopQueue = new Queue(QUEUE_NAMES.FEEDBACK_LOOP, { connection });
+export const backupQueue = new Queue(QUEUE_NAMES.BACKUP, { connection });
 
 // Flow producer for orchestrating multi-step jobs
 export const flowProducer = new FlowProducer({ connection });
@@ -116,6 +122,14 @@ export interface PublishJobData {
   platform: 'linkedin' | 'x';
   scheduledAt: string; // ISO timestamp
   retryCount: number;
+}
+
+// Phase 10: Adaptive Feedback Loop
+export interface FeedbackLoopJobData {
+  userId: string
+  postId: string
+  platform: 'linkedin' | 'x'
+  scoredTopicId: string
 }
 
 // Phase 9: Engagement Tracking

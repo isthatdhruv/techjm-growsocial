@@ -1,23 +1,8 @@
-import { pgTable, pgEnum, uuid, varchar, text, timestamp, unique } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { pgTable, uuid, varchar, text, timestamp, unique } from 'drizzle-orm/pg-core';
 import { users } from './auth';
+import { platformEnum, connectionHealthEnum } from './_enums';
 
-export const platformEnum = pgEnum('social_platform', [
-  'linkedin',
-  'x',
-  'instagram',
-  'facebook',
-  'tiktok',
-  'threads',
-  'bluesky',
-]);
-
-export const connectionHealthEnum = pgEnum('connection_health', [
-  'healthy',
-  'degraded',
-  'expired',
-  'disconnected',
-]);
+export { platformEnum, connectionHealthEnum };
 
 export const platformConnections = pgTable(
   'platform_connections',
@@ -40,10 +25,3 @@ export const platformConnections = pgTable(
   },
   (table) => [unique('platform_connections_user_platform_unique').on(table.userId, table.platform)],
 );
-
-export const platformConnectionsRelations = relations(platformConnections, ({ one }) => ({
-  user: one(users, {
-    fields: [platformConnections.userId],
-    references: [users.id],
-  }),
-}));

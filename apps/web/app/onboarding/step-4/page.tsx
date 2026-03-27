@@ -15,7 +15,7 @@ interface SocialConnection {
 }
 
 export default function Step4Socials() {
-  const { user, loading } = useAuth();
+  const { user, loading, setOnboardingStep } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { setSocialData } = useOnboardingStore();
@@ -101,6 +101,7 @@ export default function Step4Socials() {
           orgUrn: c.orgUrn || undefined,
         })),
       });
+      setOnboardingStep('5');
       router.push('/onboarding/step-5');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');

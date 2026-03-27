@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helpers';
+import { withRateLimit } from '@/lib/rate-limit';
 import { db, userModelConfig, userAiKeys, userNicheProfiles } from '@techjm/db';
 import { AdapterFactory } from '@techjm/ai-adapters';
 import type { AIProvider } from '@techjm/ai-adapters';
@@ -26,6 +27,9 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const rateLimitResponse = await withRateLimit(user.id, 'discovery:trigger');
+    if (rateLimitResponse) return rateLimitResponse;
 
     if (user.onboardingStep !== 'complete') {
       return NextResponse.json(

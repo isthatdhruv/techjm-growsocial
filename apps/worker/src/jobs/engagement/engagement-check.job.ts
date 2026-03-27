@@ -2,9 +2,10 @@ import { Worker, Job } from 'bullmq'
 import { db, posts, topicPerformance, platformConnections, decrypt } from '@techjm/db'
 import { eq, and } from 'drizzle-orm'
 import { connection } from '../../redis.js'
-import { QUEUE_NAMES, type EngagementCheckJobData } from '../../queues.js'
+import { QUEUE_NAMES, type EngagementCheckJobData, type FeedbackLoopJobData, feedbackLoopQueue } from '../../queues.js'
 import { fetchLinkedInMetrics } from './linkedin-metrics.js'
 import { fetchXMetrics } from './x-metrics.js'
+import { withErrorHandling } from '../../lib/error-handler.js'
 
 interface PlatformMetrics {
   impressions: number
@@ -115,9 +116,33 @@ async function processEngagementCheck(job: Job<EngagementCheckJobData>) {
     job.log(`Inserted new ${checkpoint} checkpoint`)
   }
 
-  // 6. Final checkpoint TODO for Phase 10
+  // 6. Final checkpoint — trigger feedback loop (Phase 10)
   if (checkpoint === '48h') {
-    job.log('Final checkpoint (48h) — TODO: trigger feedback loop (Phase 10)')
+    job.log('Final checkpoint (48h) — triggering feedback loop')
+
+    const postData = await db.query.posts.findFirst({
+      where: eq(posts.id, postId),
+      columns: { topicId: true },
+    })
+
+    if (postData?.topicId) {
+      await feedbackLoopQueue.add(
+        `feedback-${postId}`,
+        {
+          userId,
+          postId,
+          platform,
+          scoredTopicId: postData.topicId,
+        } as FeedbackLoopJobData,
+        {
+          delay: 0,
+          attempts: 2,
+          backoff: { type: 'exponential', delay: 30000 },
+          removeOnComplete: { count: 500 },
+        },
+      )
+      job.log(`Queued feedback-loop job for post ${postId}, topic ${postData.topicId}`)
+    }
   }
 
   return {
@@ -131,7 +156,7 @@ async function processEngagementCheck(job: Job<EngagementCheckJobData>) {
 
 export const engagementCheckWorker = new Worker<EngagementCheckJobData>(
   QUEUE_NAMES.ENGAGEMENT_CHECK,
-  processEngagementCheck,
+  withErrorHandling('engagement-check', processEngagementCheck),
   {
     connection,
     concurrency: 6,

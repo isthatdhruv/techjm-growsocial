@@ -4,6 +4,7 @@ import { db, scoredTopics, scoringWeights } from '@techjm/db';
 import { eq } from 'drizzle-orm';
 import { connection } from '../../redis.js';
 import { QUEUE_NAMES } from '../../queues.js';
+import { withErrorHandling } from '../../lib/error-handler.js';
 import type { ScoringOrchestratorJobData } from '../../queues.js';
 
 // Default weights from architecture doc Section 5.2
@@ -113,7 +114,7 @@ async function processScoringOrchestrator(job: Job<ScoringOrchestratorJobData>) 
 
 export const scoringOrchestratorWorker = new Worker(
   QUEUE_NAMES.SCORING_ORCHESTRATOR,
-  processScoringOrchestrator,
+  withErrorHandling('scoring-orchestrator', processScoringOrchestrator),
   { connection, concurrency: 10 },
 );
 

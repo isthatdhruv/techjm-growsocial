@@ -65,11 +65,13 @@ function getScoreColor(score: number): string {
 
 function TopicCard({
   topic,
+  weightInfo,
   onApprove,
   onReject,
   onSaveEdit,
 }: {
   topic: ScoredTopic;
+  weightInfo: { isAdaptive: boolean; lastUpdated: string | null; totalPosts: number } | null;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onSaveEdit: (id: string, angle: string) => void;
@@ -108,6 +110,28 @@ function TopicCard({
             <p className="text-[10px] text-text-muted">score</p>
           </div>
         </div>
+
+        {/* Weight source badge */}
+        {weightInfo && (
+          <div className="mb-2">
+            <span
+              className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium ${
+                weightInfo.isAdaptive
+                  ? 'bg-green-500/10 text-green-400'
+                  : 'bg-white/5 text-text-muted/60'
+              }`}
+              title={
+                weightInfo.isAdaptive
+                  ? `Based on ${weightInfo.totalPosts} posts of engagement data`
+                  : 'Collecting data to optimize weights'
+              }
+            >
+              {weightInfo.isAdaptive
+                ? `Adaptive weights${weightInfo.lastUpdated ? ` (updated ${formatRelative(weightInfo.lastUpdated)})` : ''}`
+                : `Default weights (collecting data\u2026)`}
+            </span>
+          </div>
+        )}
 
         {/* Title */}
         <h3 className="mb-1 text-base font-semibold text-white">{topic.title}</h3>
@@ -419,6 +443,17 @@ function SubAgentDetail({
   );
 }
 
+function formatRelative(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export default function TopicReviewPage() {
   const { user } = useAuth();
   const [topics, setTopics] = useState<ScoredTopic[]>([]);
@@ -428,6 +463,11 @@ export default function TopicReviewPage() {
   const [sort, setSort] = useState('score');
   const [search, setSearch] = useState('');
   const [triggeringDiscovery, setTriggeringDiscovery] = useState(false);
+  const [weightInfo, setWeightInfo] = useState<{
+    isAdaptive: boolean;
+    lastUpdated: string | null;
+    totalPosts: number;
+  } | null>(null);
 
   const getToken = useCallback(async () => {
     const { getAuth } = await import('firebase/auth');
@@ -462,6 +502,28 @@ export default function TopicReviewPage() {
   useEffect(() => {
     fetchTopics();
   }, [fetchTopics]);
+
+  // Fetch weight learning info
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch('/api/analytics/learning', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setWeightInfo({
+            isAdaptive: data.maturity.stage !== 'collecting',
+            lastUpdated: data.weights.lastUpdated,
+            totalPosts: data.maturity.totalPosts,
+          });
+        }
+      } catch {
+        // Non-critical
+      }
+    })();
+  }, [getToken]);
 
   const handleApprove = async (id: string) => {
     const token = await getToken();
@@ -622,6 +684,7 @@ export default function TopicReviewPage() {
             <TopicCard
               key={topic.id}
               topic={topic}
+              weightInfo={weightInfo}
               onApprove={handleApprove}
               onReject={handleReject}
               onSaveEdit={handleSaveEdit}

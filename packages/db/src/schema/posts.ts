@@ -1,6 +1,5 @@
 import {
   pgTable,
-  pgEnum,
   uuid,
   varchar,
   text,
@@ -10,20 +9,11 @@ import {
   jsonb,
   timestamp,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
 import { users } from './auth';
-import { platformEnum } from './connections';
 import { scoredTopics } from './scoring';
+import { platformEnum, postStatusEnum } from './_enums';
 
-export const postStatusEnum = pgEnum('post_status', [
-  'draft',
-  'generating',
-  'review',
-  'scheduled',
-  'publishing',
-  'published',
-  'failed',
-]);
+export { postStatusEnum };
 
 export const posts = pgTable('posts', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -45,19 +35,6 @@ export const posts = pgTable('posts', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-export const postsRelations = relations(posts, ({ one, many }) => ({
-  user: one(users, {
-    fields: [posts.userId],
-    references: [users.id],
-  }),
-  topic: one(scoredTopics, {
-    fields: [posts.topicId],
-    references: [scoredTopics.id],
-  }),
-  publishLogs: many(publishLog),
-  performance: many(topicPerformance),
-}));
-
 export const publishLog = pgTable('publish_log', {
   id: uuid('id').primaryKey().defaultRandom(),
   postId: uuid('post_id')
@@ -70,13 +47,6 @@ export const publishLog = pgTable('publish_log', {
   errorMessage: text('error_message'),
   retryCount: integer('retry_count').default(0),
 });
-
-export const publishLogRelations = relations(publishLog, ({ one }) => ({
-  post: one(posts, {
-    fields: [publishLog.postId],
-    references: [posts.id],
-  }),
-}));
 
 export const topicPerformance = pgTable('topic_performance', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -92,10 +62,3 @@ export const topicPerformance = pgTable('topic_performance', {
   checkpoint: varchar('checkpoint', { length: 10 }).notNull(), // 2h | 6h | 24h | 48h
   measuredAt: timestamp('measured_at').defaultNow(),
 });
-
-export const topicPerformanceRelations = relations(topicPerformance, ({ one }) => ({
-  post: one(posts, {
-    fields: [topicPerformance.postId],
-    references: [posts.id],
-  }),
-}));

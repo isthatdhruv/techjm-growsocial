@@ -81,7 +81,7 @@ const TONE_OPTIONS = [
 const ANTI_TOPIC_SUGGESTIONS = ['politics', 'religion', 'competitors by name'];
 
 export default function Step2Niche() {
-  const { user, loading } = useAuth();
+  const { user, loading, setOnboardingStep } = useAuth();
   const router = useRouter();
   const { nicheData, setNicheData } = useOnboardingStore();
 
@@ -174,6 +174,7 @@ export default function Step2Niche() {
       }
 
       setNicheData(formData);
+      setOnboardingStep('3');
       router.push('/onboarding/step-3');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');

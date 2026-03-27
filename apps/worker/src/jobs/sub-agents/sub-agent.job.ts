@@ -7,6 +7,7 @@ import { AdapterFactory } from '@techjm/ai-adapters';
 import type { SubAgentType, NicheContext } from '@techjm/ai-adapters';
 import { connection } from '../../redis.js';
 import { QUEUE_NAMES } from '../../queues.js';
+import { withErrorHandling } from '../../lib/error-handler.js';
 import type { SubAgentJobData } from '../../queues.js';
 
 // Import prompt builders (for enhanced prompts used in fallback path)
@@ -166,7 +167,7 @@ async function processSubAgent(job: Job<SubAgentJobData>) {
   return { agentType, scoredTopicId, resultKeys: Object.keys(result) };
 }
 
-export const subAgentWorker = new Worker(QUEUE_NAMES.SUB_AGENT, processSubAgent, {
+export const subAgentWorker = new Worker(QUEUE_NAMES.SUB_AGENT, withErrorHandling('sub-agent', processSubAgent), {
   connection,
   concurrency: 14, // Process up to 14 sub-agent jobs in parallel (2 topics x 7 agents)
   limiter: {

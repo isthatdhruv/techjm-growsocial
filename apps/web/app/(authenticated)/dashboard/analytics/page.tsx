@@ -60,6 +60,36 @@ interface Insight {
   data: Record<string, unknown>;
 }
 
+// ─── Learning Progress Types ─────────────────────────────────────────────────
+
+interface LearningData {
+  maturity: {
+    totalPosts: number;
+    stage: 'collecting' | 'adjusting' | 'learning' | 'optimized';
+    postsUntilNextStage: number;
+  };
+  weights: {
+    current: Record<string, number>;
+    defaults: Record<string, number>;
+    lastUpdated: string | null;
+  };
+  patterns: {
+    top_hooks: { type: string; example: string; avg_engagement: number }[];
+    top_ctas: { text: string; avg_engagement: number }[];
+    optimal_length: { platform: string; min: number; max: number; best: number }[];
+    hashtag_performance: { count: number; avg_engagement: number }[];
+  } | null;
+  optimalTimes: {
+    best_hours: { hour: number; day_of_week: number; avg_engagement: number; sample_size: number }[];
+    best_days: { day_of_week: number; avg_engagement: number; day_name: string }[];
+    worst_hours: { hour: number; day_of_week: number; avg_engagement: number }[];
+    recommendations: string[];
+  } | null;
+  feedbackHistory: {
+    records: { postId: string; predicted: number; actual: number; delta: number; date: string }[];
+  };
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 async function getToken() {
@@ -139,6 +169,7 @@ export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState<DateRange>('30d');
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [insights, setInsights] = useState<Insight[] | null>(null);
+  const [learningData, setLearningData] = useState<LearningData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
 
@@ -179,13 +210,31 @@ export default function AnalyticsPage() {
     }
   }, []);
 
+  const fetchLearning = useCallback(async () => {
+    const token = await getToken();
+    if (!token) return;
+
+    try {
+      const res = await fetch('/api/analytics/learning', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLearningData(data);
+      }
+    } catch {
+      // Non-critical fetch failure
+    }
+  }, []);
+
   useEffect(() => {
     fetchAnalytics(dateRange);
   }, [dateRange, fetchAnalytics]);
 
   useEffect(() => {
     fetchInsights();
-  }, [fetchInsights]);
+    fetchLearning();
+  }, [fetchInsights, fetchLearning]);
 
   const dateRangeOptions: { value: DateRange; label: string }[] = [
     { value: '7d', label: '7d' },
@@ -447,7 +496,7 @@ export default function AnalyticsPage() {
 
           {/* Insights Section */}
           {insights !== null && (
-            <GlassCard className="p-5 lg:p-6">
+            <GlassCard className="mb-8 p-5 lg:p-6">
               <h2 className="mb-4 text-base font-semibold text-white">Performance Insights</h2>
               {insights.length === 0 ? (
                 <p className="text-sm text-text-muted/70">
@@ -471,8 +520,318 @@ export default function AnalyticsPage() {
               )}
             </GlassCard>
           )}
+
+          {/* Learning Progress Section */}
+          {learningData && <LearningProgressSection data={learningData} />}
         </>
       )}
+
+      {/* Show learning section even during loading if we have the data */}
+      {loading && learningData && <LearningProgressSection data={learningData} />}
     </div>
   );
+}
+
+// ─── Learning Progress Section ───────────────────────────────────────────────
+
+const DIMENSION_LABELS: Record<string, string> = {
+  sentiment: 'Sentiment',
+  audience_fit: 'Audience Fit',
+  seo: 'SEO',
+  competitor_gap: 'Competitor Gap',
+  content_market_fit: 'Content-Market Fit',
+  engagement_pred: 'Engagement Pred',
+};
+
+const STAGE_CONFIG: Record<
+  LearningData['maturity']['stage'],
+  { label: string; color: string; progress: number }
+> = {
+  collecting: { label: 'Collecting baseline', color: 'bg-yellow-500', progress: 25 },
+  adjusting: { label: 'Weights adjusting', color: 'bg-blue-500', progress: 50 },
+  learning: { label: 'Pattern learning active', color: 'bg-purple-500', progress: 75 },
+  optimized: { label: 'Fully optimized', color: 'bg-green-500', progress: 100 },
+};
+
+const DAY_NAMES_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function LearningProgressSection({ data }: { data: LearningData }) {
+  const { maturity, weights, patterns, optimalTimes } = data;
+  const stage = STAGE_CONFIG[maturity.stage];
+
+  return (
+    <GlassCard className="p-5 lg:p-6">
+      <div className="mb-1 flex items-center gap-2">
+        <h2 className="text-base font-semibold text-white">How Your AI Is Learning</h2>
+        <span className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${stage.color}/20 text-white`}>
+          {stage.label}
+        </span>
+      </div>
+      <p className="mb-5 text-[13px] text-text-muted/70">
+        The scoring model adapts based on your actual engagement data
+      </p>
+
+      {/* Maturity Progress Bar */}
+      <div className="mb-6">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[12px] text-text-muted">
+            {maturity.totalPosts} post{maturity.totalPosts !== 1 ? 's' : ''} analyzed
+            {weights.lastUpdated && (
+              <> &middot; Weights last updated {formatRelativeTime(weights.lastUpdated)}</>
+            )}
+          </span>
+          {maturity.postsUntilNextStage > 0 && (
+            <span className="text-[12px] text-text-muted/60">
+              {maturity.postsUntilNextStage} more until next stage
+            </span>
+          )}
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-white/5">
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${stage.color}`}
+            style={{ width: `${stage.progress}%` }}
+          />
+        </div>
+        <div className="mt-1.5 flex justify-between text-[10px] text-text-muted/40">
+          <span>Collecting</span>
+          <span>Adjusting</span>
+          <span>Learning</span>
+          <span>Optimized</span>
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Weight Visualization */}
+        <div>
+          <h3 className="mb-3 text-[13px] font-medium text-white">Scoring Weights</h3>
+          <div className="space-y-2.5">
+            {Object.entries(weights.current).map(([dim, value]) => {
+              const defaultVal = weights.defaults[dim] ?? 0;
+              const delta = value - defaultVal;
+              const direction = delta > 0.002 ? 'up' : delta < -0.002 ? 'down' : 'flat';
+              const barWidth = Math.max(5, (value / 0.4) * 100); // 0.40 is MAX_WEIGHT
+              const ghostWidth = Math.max(5, (defaultVal / 0.4) * 100);
+
+              return (
+                <div key={dim}>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[12px] text-text-muted">
+                      {DIMENSION_LABELS[dim] ?? dim}
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[12px]">
+                      <span className="font-mono text-white">{value.toFixed(3)}</span>
+                      {direction === 'up' && (
+                        <span className="text-green-400">↑</span>
+                      )}
+                      {direction === 'down' && (
+                        <span className="text-red-400">↓</span>
+                      )}
+                      {direction !== 'flat' && (
+                        <span className="text-[10px] text-text-muted/50">
+                          was {defaultVal.toFixed(2)}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/5">
+                    {/* Ghost bar showing default weight */}
+                    <div
+                      className="absolute inset-y-0 left-0 rounded-full border border-white/10"
+                      style={{ width: `${ghostWidth}%` }}
+                    />
+                    {/* Current weight bar */}
+                    <div
+                      className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${
+                        direction === 'up'
+                          ? 'bg-green-500/70'
+                          : direction === 'down'
+                            ? 'bg-white/20'
+                            : 'bg-accent/50'
+                      }`}
+                      style={{ width: `${barWidth}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Learned Patterns + Optimal Times */}
+        <div className="space-y-5">
+          {/* Learned Patterns */}
+          {patterns && (patterns.top_hooks.length > 0 || patterns.hashtag_performance.length > 0) && (
+            <div>
+              <h3 className="mb-3 text-[13px] font-medium text-white">Learned Patterns</h3>
+              <div className="space-y-2">
+                {patterns.top_hooks.slice(0, 3).map((hook, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-medium text-white capitalize">
+                        {hook.type.replace('_', ' ')} hooks
+                      </span>
+                      <span className="text-[11px] text-green-400">
+                        {hook.avg_engagement.toFixed(1)} avg
+                      </span>
+                    </div>
+                    <p className="mt-0.5 truncate text-[11px] text-text-muted/60">
+                      e.g. &ldquo;{hook.example}&rdquo;
+                    </p>
+                  </div>
+                ))}
+                {patterns.optimal_length.map((ol, i) => (
+                  <div
+                    key={`len-${i}`}
+                    className="rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-[12px] text-text-muted"
+                  >
+                    Optimal {ol.platform === 'linkedin' ? 'LinkedIn' : 'X'} length:{' '}
+                    <span className="text-white">{ol.min}–{ol.max} words</span>{' '}
+                    (best: {ol.best})
+                  </div>
+                ))}
+                {patterns.hashtag_performance.length > 0 && (
+                  <div className="rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-[12px] text-text-muted">
+                    Best hashtag count:{' '}
+                    <span className="text-white">{patterns.hashtag_performance[0].count}</span>{' '}
+                    ({patterns.hashtag_performance[0].avg_engagement.toFixed(1)} avg engagement)
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Optimal Posting Schedule */}
+          {optimalTimes && optimalTimes.best_hours.length > 0 && (
+            <div>
+              <h3 className="mb-3 text-[13px] font-medium text-white">Optimal Posting Schedule</h3>
+              {/* Weekly heatmap */}
+              <WeeklyHeatmap optimalTimes={optimalTimes} />
+              {/* Recommendations */}
+              {optimalTimes.recommendations.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {optimalTimes.recommendations.map((rec, i) => (
+                    <p key={i} className="text-[12px] text-text-muted/70">
+                      {rec}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Empty state when no patterns yet */}
+          {!patterns && !optimalTimes && (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/10 py-8">
+              <p className="text-[13px] text-text-muted/60">
+                {maturity.totalPosts < 10
+                  ? `Publish ${10 - maturity.totalPosts} more posts to start learning patterns`
+                  : 'Patterns will appear after engagement data is collected'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </GlassCard>
+  );
+}
+
+// ─── Weekly Heatmap ──────────────────────────────────────────────────────────
+
+function WeeklyHeatmap({
+  optimalTimes,
+}: {
+  optimalTimes: NonNullable<LearningData['optimalTimes']>;
+}) {
+  // Build a lookup: `${dayOfWeek}-${hour}` → engagement score
+  const heatData: Record<string, number> = {};
+  let maxEng = 0;
+  for (const slot of optimalTimes.best_hours) {
+    const key = `${slot.day_of_week}-${slot.hour}`;
+    heatData[key] = slot.avg_engagement;
+    if (slot.avg_engagement > maxEng) maxEng = slot.avg_engagement;
+  }
+  for (const slot of optimalTimes.worst_hours) {
+    const key = `${slot.day_of_week}-${slot.hour}`;
+    if (!heatData[key]) {
+      heatData[key] = slot.avg_engagement;
+    }
+  }
+
+  // Show hours from 6AM to 10PM
+  const hours = Array.from({ length: 17 }, (_, i) => i + 6);
+
+  function getCellColor(day: number, hour: number): string {
+    const key = `${day}-${hour}`;
+    const val = heatData[key];
+    if (val === undefined) return 'bg-white/[0.03]'; // no data
+    if (maxEng === 0) return 'bg-white/[0.03]';
+    const ratio = val / maxEng;
+    if (ratio >= 0.75) return 'bg-green-500/50';
+    if (ratio >= 0.5) return 'bg-green-500/25';
+    if (ratio >= 0.25) return 'bg-yellow-500/20';
+    return 'bg-red-500/15';
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[320px]">
+        {/* Header row */}
+        <div className="mb-1 flex">
+          <div className="w-8 shrink-0" />
+          {hours.map((h) => (
+            <div
+              key={h}
+              className="flex-1 text-center text-[9px] text-text-muted/40"
+            >
+              {h % 3 === 0 ? `${h}` : ''}
+            </div>
+          ))}
+        </div>
+        {/* Day rows */}
+        {[1, 2, 3, 4, 5, 6, 0].map((day) => (
+          <div key={day} className="mb-0.5 flex items-center">
+            <div className="w-8 shrink-0 text-[10px] text-text-muted/50">
+              {DAY_NAMES_SHORT[day]}
+            </div>
+            <div className="flex flex-1 gap-px">
+              {hours.map((hour) => (
+                <div
+                  key={hour}
+                  className={`h-3 flex-1 rounded-[2px] ${getCellColor(day, hour)}`}
+                  title={`${DAY_NAMES_SHORT[day]} ${hour}:00 — ${heatData[`${day}-${hour}`]?.toFixed(1) ?? 'no data'}`}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+        {/* Legend */}
+        <div className="mt-2 flex items-center justify-end gap-2 text-[9px] text-text-muted/40">
+          <span>Low</span>
+          <div className="flex gap-px">
+            <div className="h-2 w-4 rounded-[2px] bg-red-500/15" />
+            <div className="h-2 w-4 rounded-[2px] bg-yellow-500/20" />
+            <div className="h-2 w-4 rounded-[2px] bg-green-500/25" />
+            <div className="h-2 w-4 rounded-[2px] bg-green-500/50" />
+          </div>
+          <span>High</span>
+          <div className="ml-2 h-2 w-4 rounded-[2px] bg-white/[0.03]" />
+          <span>No data</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatRelativeTime(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }

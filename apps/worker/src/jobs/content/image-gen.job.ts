@@ -7,6 +7,7 @@ import type { AIProvider } from '@techjm/ai-adapters';
 import { v2 as cloudinary } from 'cloudinary';
 import { connection } from '../../redis.js';
 import { QUEUE_NAMES, type ImageGenJobData } from '../../queues.js';
+import { withErrorHandling } from '../../lib/error-handler.js';
 
 // Configure Cloudinary (optional — gracefully degrades if not configured)
 if (process.env.CLOUDINARY_CLOUD_NAME) {
@@ -123,7 +124,7 @@ async function processImageGen(job: Job<ImageGenJobData>) {
   };
 }
 
-export const imageGenWorker = new Worker(QUEUE_NAMES.IMAGE_GEN, processImageGen, {
+export const imageGenWorker = new Worker(QUEUE_NAMES.IMAGE_GEN, withErrorHandling('image-gen', processImageGen), {
   connection,
   concurrency: 2, // Lower concurrency — image gen is expensive
 });

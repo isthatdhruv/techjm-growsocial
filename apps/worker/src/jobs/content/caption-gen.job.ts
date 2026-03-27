@@ -6,6 +6,7 @@ import { AdapterFactory } from '@techjm/ai-adapters';
 import type { AIProvider, CaptionRequest } from '@techjm/ai-adapters';
 import { connection } from '../../redis.js';
 import { imagePromptGenQueue, type CaptionGenJobData, type ImagePromptGenJobData } from '../../queues.js';
+import { withErrorHandling } from '../../lib/error-handler.js';
 import { getAutoSelectedModel } from '../sub-agents/model-selector.js';
 
 async function processCaptionGen(job: Job<CaptionGenJobData>) {
@@ -139,7 +140,7 @@ async function processCaptionGen(job: Job<CaptionGenJobData>) {
   };
 }
 
-export const captionGenWorker = new Worker(QUEUE_NAMES.CAPTION_GEN, processCaptionGen, {
+export const captionGenWorker = new Worker(QUEUE_NAMES.CAPTION_GEN, withErrorHandling('caption-gen', processCaptionGen), {
   connection,
   concurrency: 4,
 });

@@ -47,8 +47,18 @@ const STATUS_BADGES: Record<string, { label: string; classes: string }> = {
   failed: { label: 'Failed', classes: 'bg-red-500/20 text-red-400' },
 };
 
+interface OptimalSlot {
+  hour: number;
+  day_of_week: number;
+  avg_engagement: number;
+  sample_size: number;
+}
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 function PostCard({
   post,
+  optimalSlots,
   onEditCaption,
   onRegenerateImage,
   onSchedule,
@@ -56,6 +66,7 @@ function PostCard({
   onDelete,
 }: {
   post: Post;
+  optimalSlots: OptimalSlot[];
   onEditCaption: (id: string, caption: string) => void;
   onRegenerateImage: (id: string) => void;
   onSchedule: (id: string, scheduledAt: string) => void;
@@ -229,6 +240,43 @@ function PostCard({
         {showSchedule && (
           <div className="mb-4 rounded-lg border border-white/10 bg-white/5 p-4">
             <p className="mb-3 text-sm font-medium text-white">Schedule Post</p>
+            {/* Optimal time suggestions */}
+            {optimalSlots.length > 0 && (
+              <div className="mb-3">
+                <p className="mb-2 text-[11px] text-text-muted/60">Suggested times (based on your engagement data)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {optimalSlots.slice(0, 3).map((slot, i) => {
+                    // Find the next occurrence of this day+hour
+                    const now = new Date();
+                    const targetDay = slot.day_of_week;
+                    const targetHour = slot.hour;
+                    const currentDay = now.getDay();
+                    let daysUntil = targetDay - currentDay;
+                    if (daysUntil < 0) daysUntil += 7;
+                    if (daysUntil === 0 && now.getHours() >= targetHour) daysUntil = 7;
+                    const targetDate = new Date(now);
+                    targetDate.setDate(targetDate.getDate() + daysUntil);
+                    const dateStr = targetDate.toISOString().split('T')[0];
+                    const timeStr = `${targetHour.toString().padStart(2, '0')}:00`;
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          setScheduleDate(dateStr);
+                          setScheduleTime(timeStr);
+                        }}
+                        className="rounded-lg border border-green-500/20 bg-green-500/5 px-2.5 py-1.5 text-[11px] text-green-400 transition-colors hover:bg-green-500/15"
+                      >
+                        {DAY_NAMES[slot.day_of_week]} {targetHour}:00
+                        <span className="ml-1 text-[10px] text-green-400/50">
+                          ({slot.avg_engagement.toFixed(1)} avg)
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="flex gap-2">
               <input
                 type="date"
@@ -417,6 +465,7 @@ export default function ContentStudioPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<(typeof STATUS_TABS)[number]>('review');
   const [previewPost, setPreviewPost] = useState<Post | null>(null);
+  const [optimalSlots, setOptimalSlots] = useState<OptimalSlot[]>([]);
 
   const getToken = useCallback(async () => {
     const { getAuth } = await import('firebase/auth');
@@ -447,6 +496,24 @@ export default function ContentStudioPage() {
   useEffect(() => {
     fetchPosts();
   }, [fetchPosts]);
+
+  // Fetch optimal posting times from learning data
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch('/api/analytics/learning', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setOptimalSlots(data.optimalTimes?.best_hours ?? []);
+        }
+      } catch {
+        // Non-critical
+      }
+    })();
+  }, [getToken]);
 
   // Poll for generating status updates
   useEffect(() => {
@@ -607,6 +674,7 @@ export default function ContentStudioPage() {
                   <div key={post.id}>
                     <PostCard
                       post={post}
+                      optimalSlots={optimalSlots}
                       onEditCaption={handleEditCaption}
                       onRegenerateImage={handleRegenerateImage}
                       onSchedule={handleSchedule}

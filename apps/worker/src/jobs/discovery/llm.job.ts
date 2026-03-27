@@ -7,6 +7,7 @@ import type { NicheContext, GroundingItem, AIProvider } from '@techjm/ai-adapter
 import { eq, and, desc, gt } from 'drizzle-orm';
 import { connection } from '../../redis.js';
 import { QUEUE_NAMES } from '../../queues.js';
+import { withErrorHandling } from '../../lib/error-handler.js';
 import type { DiscoveryLLMJobData } from '../../queues.js';
 
 async function processDiscoveryLLM(job: Job<DiscoveryLLMJobData>) {
@@ -140,7 +141,7 @@ async function processDiscoveryLLM(job: Job<DiscoveryLLMJobData>) {
   };
 }
 
-export const discoveryLLMWorker = new Worker(QUEUE_NAMES.DISCOVERY_LLM, processDiscoveryLLM, {
+export const discoveryLLMWorker = new Worker(QUEUE_NAMES.DISCOVERY_LLM, withErrorHandling(QUEUE_NAMES.DISCOVERY_LLM, processDiscoveryLLM), {
   connection,
   concurrency: 8, // 2 users × 4 slots
   limiter: {

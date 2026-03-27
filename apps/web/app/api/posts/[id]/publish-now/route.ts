@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helpers';
+import { withRateLimit } from '@/lib/rate-limit';
 import { db, posts } from '@techjm/db';
 import { eq, and } from 'drizzle-orm';
 import { publishQueue, PublishJobData } from '@/lib/queue-client';
@@ -12,6 +13,9 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const rateLimitResponse = await withRateLimit(user.id, 'publish:post');
+  if (rateLimitResponse) return rateLimitResponse;
 
   const { id } = await params;
 

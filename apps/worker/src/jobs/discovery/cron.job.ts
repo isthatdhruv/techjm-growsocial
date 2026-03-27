@@ -4,6 +4,7 @@ import { db, users, userModelConfig, userAiKeys } from '@techjm/db';
 import { eq } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { flowProducer, QUEUE_NAMES } from '../../queues.js';
+import { withErrorHandling } from '../../lib/error-handler.js';
 import type { DiscoveryLLMJobData, DiscoveryMergeJobData } from '../../queues.js';
 import { connection } from '../../redis.js';
 
@@ -101,7 +102,7 @@ async function processDiscoveryCron(job: Job) {
 
 export const discoveryCronWorker = new Worker(
   QUEUE_NAMES.DISCOVERY_CRON,
-  processDiscoveryCron,
+  withErrorHandling(QUEUE_NAMES.DISCOVERY_CRON, processDiscoveryCron),
   { connection, concurrency: 1 },
 );
 

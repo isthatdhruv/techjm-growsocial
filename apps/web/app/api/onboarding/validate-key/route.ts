@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helpers';
+import { withRateLimit } from '@/lib/rate-limit';
 import { AdapterFactory, type AIProvider } from '@techjm/ai-adapters';
 import { z } from 'zod';
 
@@ -18,6 +19,9 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const rateLimitResponse = await withRateLimit(user.id, 'validate:key');
+    if (rateLimitResponse) return rateLimitResponse;
 
     const body = await request.json();
     const parsed = bodySchema.safeParse(body);

@@ -1,16 +1,8 @@
-import { pgTable, pgEnum, uuid, varchar, text, jsonb, timestamp, unique } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { pgTable, uuid, varchar, text, jsonb, timestamp, unique } from 'drizzle-orm/pg-core';
 import { users } from './auth';
+import { aiProviderEnum } from './_enums';
 
-export const aiProviderEnum = pgEnum('ai_provider', [
-  'openai',
-  'anthropic',
-  'google',
-  'xai',
-  'deepseek',
-  'mistral',
-  'replicate',
-]);
+export { aiProviderEnum };
 
 export const userAiKeys = pgTable(
   'user_ai_keys',
@@ -27,13 +19,6 @@ export const userAiKeys = pgTable(
   },
   (table) => [unique('user_ai_keys_user_provider_unique').on(table.userId, table.provider)],
 );
-
-export const userAiKeysRelations = relations(userAiKeys, ({ one }) => ({
-  user: one(users, {
-    fields: [userAiKeys.userId],
-    references: [users.id],
-  }),
-}));
 
 export const userModelConfig = pgTable('user_model_config', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -52,9 +37,3 @@ export const userModelConfig = pgTable('user_model_config', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-export const userModelConfigRelations = relations(userModelConfig, ({ one }) => ({
-  user: one(users, {
-    fields: [userModelConfig.userId],
-    references: [users.id],
-  }),
-}));

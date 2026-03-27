@@ -1,6 +1,6 @@
 # TechJM / Grow Social MVP - Developer Setup Guide
 
-Complete step-by-step guide to set up and run the project locally, covering **Phase 1 through Phase 8**.
+Complete step-by-step guide to set up and run the project locally, covering **Phase 1 through Phase 12**.
 
 ---
 
@@ -115,6 +115,12 @@ docker compose logs -f redis
 # Copy the example env file
 cp .env.example .env
 ```
+
+> **Monorepo note:** Next.js loads `.env` from `apps/web/`, not the root. A symlink bridges this:
+> ```bash
+> ln -s ../../.env apps/web/.env
+> ```
+> This symlink is git-ignored. You must restart the dev server after creating it.
 
 Now open `.env` and fill in each section:
 
@@ -465,6 +471,32 @@ POST   /api/posts/:id/cancel      - Cancel scheduled post (reverts to review)
 POST   /api/posts/:id/retry       - Retry a failed post (resets retry count)
 GET    /api/queue                 - List posts by queue status (upcoming/publishing/published/failed)
 GET    /api/queue/stats           - Queue summary (scheduled today/week, published, failed count)
+
+# Analytics (Phase 9)
+GET    /api/analytics              - Summary stats, timeline, per-post engagement
+GET    /api/analytics/insights     - Data-driven performance insights
+GET    /api/analytics/learning     - Feedback loop learning state (Phase 10)
+
+# Settings (Phase 11)
+GET    /api/settings/niche         - Get niche profile
+PATCH  /api/settings/niche         - Update niche profile (optional weight reset)
+GET    /api/settings/ai-keys       - List AI keys (provider + capabilities, no raw key)
+PATCH  /api/settings/ai-keys       - Add/remove/revalidate AI provider key
+GET    /api/settings/model-config   - Get model slot assignments
+PATCH  /api/settings/model-config   - Update model slot assignments
+GET    /api/settings/notifications  - Get notification preferences
+PATCH  /api/settings/notifications  - Update toggles, digest time, timezone
+POST   /api/settings/social/disconnect     - Disconnect a social platform
+POST   /api/settings/telegram/generate-code - Generate 6-digit Telegram link code
+POST   /api/settings/telegram/test         - Send test Telegram notification
+POST   /api/settings/telegram/disconnect   - Unlink Telegram
+GET    /api/settings/health-summary        - Sidebar health indicator (hasIssues, expiringSoon)
+DELETE /api/settings/account               - Delete account (cascading) + Firebase user
+POST   /api/settings/account/export        - Export all user data as JSON download
+GET    /api/connections                    - List user's platform connections
+
+# Telegram Webhook (Phase 11 — public endpoint, no auth)
+POST   /api/webhooks/telegram      - Telegram bot commands (/link, /status, /stop, /start)
 ```
 
 ### 10.6 Worker
@@ -488,6 +520,12 @@ curl http://localhost:3100/health
 #   - image-prompt-gen (concurrency: 4, after caption-gen)
 #   - image-gen (concurrency: 2, after image-prompt-gen)
 #   - publish (concurrency: 4, rate: 10/min, delayed jobs)
+#   - engagement-check (concurrency: 6, rate: 15/min, checkpoints: 2h/6h/24h/48h)
+#   - feedback-loop (concurrency: 2, triggers after 48h checkpoint)
+#   - daily-digest (cron: 8 AM UTC)
+#   - weekly-report (cron: Monday 9 AM UTC)
+#   - connection-health (cron: 5:30 AM daily)
+#   - token-refresh (cron: Sunday 3 AM weekly)
 ```
 
 ### 10.7 Discovery Pipeline (Phase 5)
@@ -665,12 +703,16 @@ grow-social-mvp/
 │   ├── web/                          # Next.js 15 frontend (port 3000)
 │   │   ├── app/
 │   │   │   ├── (authenticated)/      # Auth-protected routes
-│   │   │   │   └── dashboard/        # Main dashboard
-│   │   │   │       ├── topics/       # Topic review dashboard (Phase 6)
-│   │   │   │       ├── content/      # Content Studio dashboard (Phase 7)
-│   │   │   │       └── queue/        # Publishing Queue dashboard (Phase 8)
+│   │   │   │   ├── dashboard/        # Main dashboard
+│   │   │   │   │   ├── topics/       # Topic review dashboard (Phase 6)
+│   │   │   │   │   ├── content/      # Content Studio dashboard (Phase 7)
+│   │   │   │   │   ├── queue/        # Publishing Queue dashboard (Phase 8)
+│   │   │   │   │   └── analytics/    # Analytics dashboard (Phase 9)
+│   │   │   │   └── settings/         # Settings page — 5-tab (Phase 11)
 │   │   │   ├── api/                  # API routes
 │   │   │   │   ├── auth/             # Firebase + OAuth endpoints
+│   │   │   │   ├── analytics/        # Analytics + insights + learning (Phase 9-10)
+│   │   │   │   ├── connections/      # List platform connections
 │   │   │   │   ├── discovery/        # Discovery pipeline endpoints
 │   │   │   │   │   ├── trigger/      # POST - manual discovery trigger
 │   │   │   │   │   └── status/       # GET - poll discovery run progress
@@ -693,6 +735,17 @@ grow-social-mvp/
 │   │   │   │   ├── queue/            # Publishing Queue endpoints (Phase 8)
 │   │   │   │   │   ├── route.ts      # GET - list posts by queue status
 │   │   │   │   │   └── stats/        # GET - queue summary stats
+│   │   │   │   ├── settings/         # Settings endpoints (Phase 11)
+│   │   │   │   │   ├── niche/        # GET/PATCH - niche config
+│   │   │   │   │   ├── ai-keys/      # GET/PATCH - AI key management
+│   │   │   │   │   ├── model-config/ # GET/PATCH - model slot assignments
+│   │   │   │   │   ├── notifications/# GET/PATCH - notification toggles
+│   │   │   │   │   ├── social/       # Disconnect platform
+│   │   │   │   │   ├── telegram/     # Generate code, test, disconnect
+│   │   │   │   │   ├── health-summary/ # Sidebar health indicator
+│   │   │   │   │   └── account/      # DELETE + export
+│   │   │   │   ├── webhooks/         # External webhooks
+│   │   │   │   │   └── telegram/     # Telegram bot commands (public)
 │   │   │   │   └── onboarding/       # Onboarding data endpoints
 │   │   │   ├── components/           # Shared UI components
 │   │   │   │   ├── glass-card.tsx    # Glassmorphism card component
@@ -728,6 +781,9 @@ grow-social-mvp/
 │           ├── index.ts              # Worker entry, cron scheduling, health server
 │           ├── queues.ts             # Queue definitions + job data types
 │           ├── redis.ts              # Redis connection config
+│           ├── notifications/        # Phase 11: Telegram notification helpers
+│           │   ├── telegram.ts       # Bot singleton + 6 message formatters
+│           │   └── publish-notify.ts # Publish result notification dispatcher
 │           └── jobs/
 │               ├── fallback/
 │               │   └── grounding.job.ts  # 5:55 AM - scrape HN/Reddit/RSS for grounding
@@ -751,11 +807,26 @@ grow-social-mvp/
 │               │   ├── caption-gen.job.ts    # Generate platform-specific captions
 │               │   ├── image-prompt-gen.job.ts # Generate image prompt from caption
 │               │   └── image-gen.job.ts      # Generate image + Cloudinary upload
-│               └── publish/           # Phase 8: Publishing Pipeline
-│                   ├── publish.job.ts       # Main publish processor (Postiz + direct fallback)
-│                   ├── postiz-client.ts     # Postiz API integration
-│                   ├── direct-publisher.ts  # Direct LinkedIn/X API publishing
-│                   └── log.ts              # Publish audit log helper
+│               ├── publish/           # Phase 8: Publishing Pipeline
+│               │   ├── publish.job.ts       # Main publish processor (Postiz + direct fallback)
+│               │   ├── postiz-client.ts     # Postiz API integration
+│               │   ├── direct-publisher.ts  # Direct LinkedIn/X API publishing
+│               │   └── log.ts              # Publish audit log helper
+│               ├── engagement/        # Phase 9: Engagement Tracking
+│               │   ├── engagement-check.job.ts  # 4-checkpoint engagement processor
+│               │   ├── linkedin-metrics.ts      # LinkedIn API metrics fetcher
+│               │   └── x-metrics.ts             # X API v2 metrics fetcher
+│               ├── feedback/          # Phase 10: Adaptive Feedback Loop
+│               │   ├── feedback-loop.job.ts     # Main feedback orchestrator
+│               │   ├── weight-adjuster.ts       # Pearson correlation weight update
+│               │   ├── caption-learner.ts       # Hook/CTA/length pattern learning
+│               │   └── time-optimizer.ts        # Optimal posting time computation
+│               ├── notifications/     # Phase 11: Telegram Notifications
+│               │   ├── daily-digest.job.ts      # Daily topic digest (8 AM UTC)
+│               │   └── weekly-report.job.ts     # Weekly performance report (Mon 9 AM)
+│               └── health/            # Phase 11: Connection Health Monitoring
+│                   ├── connection-health.job.ts  # Daily health check (5:30 AM)
+│                   └── token-refresh.job.ts      # Weekly token refresh (Sun 3 AM)
 │
 ├── packages/
 │   ├── db/                           # Database package (Drizzle ORM)
@@ -769,7 +840,8 @@ grow-social-mvp/
 │   │   │   │   ├── recommendations.ts # recommendation_matrix
 │   │   │   │   ├── topics.ts         # raw_topics, grounding, consensus
 │   │   │   │   ├── scoring.ts        # scored_topics, feedback, weights
-│   │   │   │   └── posts.ts          # generated_posts, publish_log
+│   │   │   │   ├── posts.ts          # generated_posts, publish_log, topic_performance
+│   │   │   │   └── notifications.ts  # notification_preferences (Phase 11)
 │   │   │   ├── index.ts              # DB client + schema exports
 │   │   │   ├── encryption.ts         # AES-256-GCM encrypt/decrypt
 │   │   │   └── seed.ts               # Recommendation matrix seed data
@@ -1076,6 +1148,229 @@ POSTIZ_API_URL=http://localhost:5000
 POSTIZ_API_KEY=your_postiz_api_key
 ```
 
+### Phase 9: Engagement Tracking + Analytics Dashboard
+
+**What was built:**
+- **4-checkpoint engagement tracking**: After every successful publish, 4 delayed BullMQ jobs are automatically queued at T+2h, T+6h, T+24h, T+48h. Each job polls the platform API for real engagement metrics (impressions, likes, comments, shares).
+- **LinkedIn metrics fetcher**: Calls LinkedIn REST API `/rest/socialMetadata` (with `/v2/socialActions` fallback) for likes/comments/shares, and `/rest/organizationalEntityShareStatistics` for org post impressions. Personal posts use an estimated impressions heuristic (likes × 30).
+- **X metrics fetcher**: Calls X API v2 `/tweets/{id}` with `public_metrics`, `non_public_metrics`, and `organic_metrics` fields. Combines retweets + quote tweets as total shares.
+- **Engagement score formula**: `likes(0.2) + comments(0.4) + shares(0.3) + normalizedImpressions(0.1)` where `normalizedImpressions = impressions / 100`.
+- **topic_performance storage**: Each checkpoint upserts a row in `topic_performance` with all metrics + computed score + timestamp. Retries update existing rows rather than duplicating.
+- **Token handling**: Encrypted access token passed with job data to avoid DB reads. Falls back to re-reading from `platform_connections` if decryption fails (token rotation scenario).
+- **Rate limiting**: Engagement check worker limited to 15 API calls/min with concurrency 6, preventing platform API rate limit violations. Failed jobs retry 3× with exponential backoff (1 min base).
+- **Analytics API** (`/api/analytics`): Returns summary stats (totalEngagement, avgPerPost, trendPercent, bestPlatform, bestPillar), timeline data for charts, and per-post checkpoint breakdowns. Supports date range filtering (7d/30d/90d/all).
+- **Analytics Insights API** (`/api/analytics/insights`): Pure data-driven insights engine (no LLM calls) computing 5 insight types: best posting time, best content pillar, platform comparison, controversy sweet spot, and consensus tier performance. Requires 10+ published posts with 48h data. Returns top 5 insights sorted by magnitude.
+- **Analytics Dashboard** (`/dashboard/analytics`): Full-featured page with date range picker, 4 summary cards (total engagement, avg per post, best platform, best pillar), engagement-over-time area chart (LinkedIn vs X), sortable post performance table with expandable checkpoint details, and performance insights section.
+- **Recharts charts**: `EngagementChart` (dual-series area chart for timeline) and `CheckpointChart` (mini area chart showing engagement growth across 4 checkpoints per post).
+- **Dashboard home** updated with analytics/performance section link.
+- **Sidebar** updated with Analytics nav item linking to `/dashboard/analytics`.
+- **Phase 10 trigger**: 48h checkpoint automatically queues a `feedback-loop` job for adaptive learning (see Phase 10).
+
+**Key files:**
+- `apps/worker/src/queues.ts` (ENGAGEMENT_CHECK queue + EngagementCheckJobData interface)
+- `apps/worker/src/jobs/engagement/engagement-check.job.ts` (main engagement processor)
+- `apps/worker/src/jobs/engagement/linkedin-metrics.ts` (LinkedIn API metrics fetcher)
+- `apps/worker/src/jobs/engagement/x-metrics.ts` (X API v2 metrics fetcher)
+- `apps/worker/src/jobs/publish/publish.job.ts` (engagement check scheduling after publish)
+- `apps/worker/src/index.ts` (engagement check worker registered)
+- `apps/web/app/api/analytics/route.ts` (main analytics data endpoint)
+- `apps/web/app/api/analytics/insights/route.ts` (data-driven insights engine)
+- `apps/web/app/(authenticated)/dashboard/analytics/page.tsx` (analytics dashboard)
+- `apps/web/app/components/analytics/EngagementChart.tsx` (timeline chart)
+- `apps/web/app/components/analytics/CheckpointChart.tsx` (per-post checkpoint chart)
+
+**Dependencies added:**
+```
+recharts ^3.8.1  (in apps/web)
+```
+
+**No new environment variables required.** Engagement tracking uses existing platform OAuth tokens from `platform_connections`.
+
+---
+
+### Phase 10: Adaptive Feedback Loop
+
+**What was built:**
+- **Feedback loop auto-trigger**: After the T+48h engagement checkpoint completes, a `feedback-loop` BullMQ job is automatically queued with zero delay. This closes the loop: discovery → scoring → content gen → publishing → engagement tracking → **learning**.
+- **Core feedback job** (`feedback-loop.job.ts`): Loads the scored topic's predicted `finalScore` and the actual 48h engagement score, computes a normalized score delta (using z-score normalization against all 48h data), stores a `scoring_feedback` record with a weights snapshot, then dispatches 3 learning modules.
+- **Cold start protection**: Learning modules only activate after 10+ posts have 48h engagement data. Before that, feedback records are collected as baseline without adjusting weights. Log output: "Need 10 posts for learning. Have N. Collecting baseline only."
+- **Weight adjuster** (`weight-adjuster.ts`): Computes Pearson correlation between each of the 6 scoring dimensions (sentiment, audience_fit, seo, competitor_gap, content_market_fit, engagement_pred) and actual engagement across the last 50 posts. Adjusts weights using a gradient-like update: `new = old + learning_rate × (correlation − avg_correlation)`. Weights are clamped to [0.05, 0.40] bounds and normalized to sum to 1.0. Uses `onConflictDoUpdate` for upsert on the `scoring_weights` table (unique on userId + dimension).
+- **Caption learner** (`caption-learner.ts`): Analyzes top 20 performing posts to extract patterns. Classifies caption hooks into 7 types (question, statistic, contrarian, story, educational, bold_claim, general). Extracts top CTAs (last 2 sentences), optimal caption word count per platform, and hashtag count performance. All patterns saved to `user_niche_profiles.brand_kit.learned_patterns`.
+- **Time optimizer** (`time-optimizer.ts`): Aggregates engagement by hour-of-day and day-of-week using PostgreSQL `EXTRACT()`, requires 2+ data points per slot for statistical significance. Identifies top 5 best and 3 worst time slots. Computes day-of-week rankings and weekday vs weekend comparison. Generates human-readable recommendations. Saved to `user_niche_profiles.brand_kit.optimal_times`.
+- **Learning API** (`/api/analytics/learning`): Returns complete learning state — maturity stage (collecting/adjusting/learning/optimized with post count thresholds 10/30/75), current vs default scoring weights, learned caption patterns, optimal posting times, and last 10 feedback records (predicted vs actual scores).
+- **Analytics dashboard — Learning Progress section**: New section at the bottom of `/dashboard/analytics` showing:
+  - Maturity progress bar with 4 stages and posts-until-next-stage indicator
+  - Scoring weight visualization: horizontal bars for each dimension, ghost outline showing default weight, green ↑ or red ↓ arrows for changes
+  - Learned patterns display: top hook types with engagement averages, optimal caption lengths, best hashtag counts
+  - Weekly posting heatmap: 7-day × 17-hour grid (6AM–10PM) color-coded by engagement (green=high, yellow=medium, red=low, gray=no data) with legend
+  - Human-readable time recommendations
+- **Content Studio — optimal time suggestions**: Schedule picker now fetches `brand_kit.optimal_times` and shows up to 3 quick-select buttons for the best posting slots (e.g., "Tuesday 9:00 — 4.2 avg"). Clicking auto-fills the date/time fields with the next occurrence of that slot.
+- **Topic Review — adaptive weights badge**: Each scored topic card displays "Adaptive weights (updated 2h ago)" (green, when 10+ posts analyzed) or "Default weights (collecting data…)" (gray, during cold start), with a tooltip showing total posts analyzed.
+
+**Key files:**
+- `apps/worker/src/queues.ts` (FEEDBACK_LOOP queue + FeedbackLoopJobData interface)
+- `apps/worker/src/jobs/feedback/feedback-loop.job.ts` (main feedback orchestrator)
+- `apps/worker/src/jobs/feedback/weight-adjuster.ts` (Pearson correlation + weight gradient update)
+- `apps/worker/src/jobs/feedback/caption-learner.ts` (hook/CTA/length/hashtag pattern learning)
+- `apps/worker/src/jobs/feedback/time-optimizer.ts` (optimal posting time computation)
+- `apps/worker/src/jobs/engagement/engagement-check.job.ts` (48h trigger point)
+- `apps/worker/src/index.ts` (feedback loop worker registered)
+- `apps/web/app/api/analytics/learning/route.ts` (learning progress API)
+- `apps/web/app/(authenticated)/dashboard/analytics/page.tsx` (Learning Progress section + WeeklyHeatmap)
+- `apps/web/app/(authenticated)/dashboard/content/page.tsx` (optimal time suggestions in schedule picker)
+- `apps/web/app/(authenticated)/dashboard/topics/page.tsx` (adaptive weights badge on topic cards)
+
+**Database tables used:**
+- `scoring_feedback` — stores predicted vs actual scores, score delta, and weights snapshot per post
+- `scoring_weights` — per-user adaptive weights with unique constraint on (userId, dimension)
+- `user_niche_profiles.brand_kit` — JSONB field stores `learned_patterns` and `optimal_times`
+
+**No new environment variables required.** The feedback loop uses existing database and Redis connections.
+
+---
+
+### Phase 11: Telegram Notifications + Settings Page + Connection Health
+
+**What was built:**
+- **Telegram bot integration**: Singleton bot instance using `node-telegram-bot-api` (polling disabled — webhook only). 6 message formatters with MarkdownV2 escaping: daily digest, publish confirmation, publish failure, token expiry warning, connection health alert, weekly report.
+- **Telegram linking flow**: User generates a 6-digit code in Settings → Notifications. Code stored in Redis with 10-minute TTL (`telegram_link:{code} → userId`). User sends `/link CODE` to `@TechJMBot` via Telegram. Webhook validates the code, saves the chat ID to `notification_preferences`, and confirms. Commands: `/status` (pipeline counts), `/stop` (pause), `/start` (resume).
+- **Publish notifications**: After every successful publish, Telegram sends a confirmation with platform emoji, caption preview, and "View Post" link. After all retries exhausted (post marked failed), sends failure notification with error details and link to queue dashboard.
+- **Daily digest cron** (8 AM UTC): Queries all users with Telegram enabled + daily digest on. Sends top pending scored topics with consensus tier emojis and scores. Skips users with no pending topics.
+- **Weekly report cron** (Monday 9 AM UTC): Sends posts published, total/avg engagement, best post of the week, and whether AI scoring weights were updated. Only to users with weekly report enabled.
+- **Connection health cron** (5:30 AM daily, before discovery at 6 AM): Lightweight API health check for each platform connection (LinkedIn `/v2/userinfo`, X `/2/users/me`). Marks connections as healthy/degraded/expired. Sends Telegram alert when a connection fails. Checks token expiry and warns users 7 days in advance.
+- **Token refresh cron** (Sunday 3 AM weekly): Finds connections expiring within 14 days that have refresh tokens. Calls LinkedIn OAuth refresh endpoint or X OAuth2 token endpoint. Encrypts and saves new tokens. Handles both platforms' different refresh flows.
+- **notification_preferences table**: Stores Telegram chat ID, 6 notification toggle booleans (daily digest, publish success/failure, token expiry, weekly report, connection health), digest time, timezone. Unique per user.
+- **Settings page** (`/settings`): 5-tab interface:
+  - **Niche tab**: Edit niche, content pillars, target audience, tone, anti-topics. Optional scoring weight reset when niche changes.
+  - **AI Keys tab**: Provider cards grid (OpenAI, Anthropic, Google, xAI, DeepSeek, Replicate) with add/remove/revalidate. Each connected provider shows capability badges (Image Gen, Web Search, X Search), model list chips, and last validated date. "Get a key" links to each provider's API console. Model slot assignment dropdowns for all 7 slots (Discovery A-D, Sub-Agent, Caption, Image) with provider/model selection validated against connected keys.
+  - **Social Platforms tab**: Per-platform cards showing connection health (green/yellow/red dot), token expiry countdown, account name, last health check. Reconnect button (re-runs OAuth flow) and Disconnect button with confirmation.
+  - **Notifications tab**: Telegram linking flow (generate code, countdown timer, copy button, deep link to bot). After connected: send test message, disconnect. 6 notification toggle switches with instant save (no submit button). Digest settings: time picker (06:00-22:00, 30-min increments) and timezone selector (14 common zones, auto-detected from browser).
+  - **Account tab**: Display info (email, name, plan, join date). Export all data as JSON download. Danger zone: delete account with `DELETE` confirmation — cascading delete across all tables + Firebase Auth user.
+- **AI Keys management API**: Add/remove AI provider keys with live validation against each provider's API. Revalidate existing keys. Provider removal cascades to clear model config slots that used that provider. Model config API validates assigned providers have valid keys before saving.
+- **Sidebar health indicators**: Settings nav item fetches `/api/settings/health-summary` on load. Shows red dot if any connection is expired/degraded, yellow dot if any token expires within 7 days.
+- **Webhook setup script** (`scripts/setup-telegram-webhook.ts`): Run once after deployment to register the Telegram webhook URL with BotFather.
+
+**Key files:**
+- `packages/db/src/schema/notifications.ts` (notification_preferences table)
+- `apps/worker/src/notifications/telegram.ts` (bot singleton + 6 message formatters)
+- `apps/worker/src/notifications/publish-notify.ts` (publish result notification helper)
+- `apps/worker/src/jobs/publish/publish.job.ts` (notification hooks added)
+- `apps/worker/src/jobs/notifications/daily-digest.job.ts` (daily cron)
+- `apps/worker/src/jobs/notifications/weekly-report.job.ts` (weekly cron)
+- `apps/worker/src/jobs/health/connection-health.job.ts` (daily health check)
+- `apps/worker/src/jobs/health/token-refresh.job.ts` (weekly token refresh)
+- `apps/worker/src/index.ts` (4 new workers registered + crons scheduled)
+- `apps/web/app/api/webhooks/telegram/route.ts` (Telegram webhook — public endpoint)
+- `apps/web/app/api/settings/telegram/generate-code/route.ts` (6-digit code generation)
+- `apps/web/app/api/settings/telegram/test/route.ts` (send test message)
+- `apps/web/app/api/settings/telegram/disconnect/route.ts` (unlink Telegram)
+- `apps/web/app/api/settings/niche/route.ts` (GET/PATCH niche config)
+- `apps/web/app/api/settings/ai-keys/route.ts` (GET/PATCH add/remove/revalidate AI keys)
+- `apps/web/app/api/settings/model-config/route.ts` (GET/PATCH model slot assignments)
+- `apps/web/app/api/settings/notifications/route.ts` (GET/PATCH notification toggles)
+- `apps/web/app/api/settings/social/disconnect/route.ts` (disconnect platform)
+- `apps/web/app/api/settings/health-summary/route.ts` (sidebar health check)
+- `apps/web/app/api/settings/account/route.ts` (DELETE account)
+- `apps/web/app/api/settings/account/export/route.ts` (JSON data export)
+- `apps/web/app/api/connections/route.ts` (list user connections)
+- `apps/web/app/(authenticated)/settings/page.tsx` (5-tab settings page)
+- `apps/web/app/components/layout/sidebar.tsx` (health dot indicators)
+- `apps/web/app/components/layout/mobile-nav.tsx` (settings link updated)
+- `apps/web/lib/redis.ts` (IORedis client for web app)
+- `scripts/setup-telegram-webhook.ts` (one-time webhook registration)
+
+**Dependencies added:**
+```
+node-telegram-bot-api ^0.66.0  (in apps/worker)
+@types/node-telegram-bot-api   (in apps/worker, devDependency)
+```
+
+**New environment variables:**
+```bash
+# Telegram Bot (optional — notifications disabled if not set)
+TELEGRAM_BOT_TOKEN=           # From @BotFather /newbot
+TELEGRAM_BOT_USERNAME=TechJMBot  # Bot username without @
+
+# Required for token refresh cron (already set in Phase 4 if using OAuth)
+LINKEDIN_CLIENT_ID=
+LINKEDIN_CLIENT_SECRET=
+X_CLIENT_ID=
+X_CLIENT_SECRET=
+```
+
+**Post-deployment setup:**
+```bash
+# Register Telegram webhook (run once)
+TELEGRAM_BOT_TOKEN=xxx NEXT_PUBLIC_APP_URL=https://yourapp.com npx tsx scripts/setup-telegram-webhook.ts
+```
+
+---
+
+### Phase 12: Production Readiness — Monitoring + Backup + Rate Limiting + Error Handling
+
+**What was built:**
+- **Uptime Kuma monitor setup** (`scripts/setup-uptime-kuma.ts`): Prints monitor definitions for PostgreSQL (TCP:5432), Redis (TCP:6379), Worker Health (HTTP:3100), Next.js (HTTP:3000), Postiz (HTTP:5000), Firebase Auth, Bull Board (HTTP:3101), and optionally OpenAI/Anthropic APIs. Includes Telegram alert channel setup instructions using the same bot from Phase 11.
+- **PostgreSQL backup automation** (`apps/worker/src/jobs/backup/pg-dump.job.ts`): BullMQ-scheduled `pg_dump | gzip` backups. Daily backups every 6 hours (7-day retention), weekly backups Sunday 2 AM (30-day retention). Verifies backup file size (>1KB), optional S3 upload via `BACKUP_S3_BUCKET`, automatic cleanup of expired backups.
+- **Redis-based rate limiter** (`packages/rate-limiter`): New workspace package. Sliding-window rate limiter using Redis sorted sets. Per-user limits for 7 action types: discovery trigger (10/day), caption generation (30/day), image generation (20/day), sub-agent calls (300/day), publishing (20/day), API general (200/hour), key validation (20/hour). Returns 429 with `Retry-After` header when exceeded.
+- **Rate limit middleware** (`apps/web/lib/rate-limit.ts`): Next.js helper wrapping the rate limiter for API routes. Applied to `/api/discovery/trigger`, `/api/onboarding/validate-key`, and `/api/posts/[id]/publish-now`.
+- **Structured error handling** (`apps/worker/src/lib/error-handler.ts`): `withErrorHandling()` wrapper applied to all 17 worker job processors. Categorizes errors into 7 types (INVALID_KEY, RATE_LIMITED, PROVIDER_ERROR, TOKEN_EXPIRED, DATA_NOT_FOUND, NETWORK_ERROR, INTERNAL_ERROR). Logs structured errors to `job_errors` table with job data context, user ID, stack trace. Console output is JSON-structured for log aggregation.
+- **job_errors table** (`packages/db/src/schema/errors.ts`): New table with indexes on (user_id, created_at) and error_category. Tracks resolved/unresolved status with timestamps.
+- **BullMQ admin dashboard** (`apps/worker/src/admin/bull-board.ts`): Express server on port 3101 serving Bull Board UI. Shows all 14 queues (including backup) with job counts, statuses, retry controls, and payload inspection.
+- **Error dashboard** (`/admin/errors`): Admin-only page showing job errors with category/time filters, stats cards (total, unresolved, most common), expandable detail view (context, stack trace), and resolve button. API at `/api/admin/errors` with pagination and category filtering.
+- **Queue admin page** (`/admin/queues`): Admin-only page embedding Bull Board via iframe, with direct link to port 3101.
+- **Enhanced worker health endpoint**: `/health` now returns services status (Redis, PostgreSQL), queue depths with all states (waiting, active, completed, failed, delayed), memory usage, uptime, and degraded status detection (>50 failed jobs). `/metrics` endpoint returns Prometheus-compatible text format.
+- **E2E dogfood test** (`scripts/e2e-dogfood.ts`): Comprehensive pipeline validation script. Checks: user with completed onboarding, niche config (3+ pillars), AI keys, model slots, raw topics, scored topics with 7 sub-agent outputs, generated content (platform-specific length validation), publish readiness, adaptive scoring weights, service health, and error tracking. Supports `--dry-run` and `--verbose` flags.
+
+**Key files:**
+- `packages/rate-limiter/src/index.ts` (RateLimiter class + RATE_LIMITS config)
+- `packages/rate-limiter/package.json` (@techjm/rate-limiter workspace package)
+- `apps/web/lib/rate-limit.ts` (withRateLimit middleware)
+- `apps/worker/src/lib/error-handler.ts` (withErrorHandling + categorizeError)
+- `apps/worker/src/jobs/backup/pg-dump.job.ts` (pg_dump worker + scheduler)
+- `apps/worker/src/admin/bull-board.ts` (Bull Board Express server)
+- `apps/worker/src/index.ts` (backup worker + bull board + enhanced health endpoint)
+- `apps/worker/src/queues.ts` (BACKUP queue added)
+- `packages/db/src/schema/errors.ts` (job_errors table + errorCategoryEnum)
+- `apps/web/app/api/admin/errors/route.ts` (error dashboard API)
+- `apps/web/app/(authenticated)/admin/errors/page.tsx` (error dashboard UI)
+- `apps/web/app/(authenticated)/admin/queues/page.tsx` (queue admin UI)
+- `scripts/setup-uptime-kuma.ts` (monitor setup helper)
+- `scripts/e2e-dogfood.ts` (E2E pipeline validation)
+
+**Dependencies added:**
+```
+@bull-board/api ^6.6.2     (in apps/worker)
+@bull-board/express ^6.6.2 (in apps/worker)
+express ^4.21.0            (in apps/worker)
+@types/express ^5.0.0      (in apps/worker, devDependency)
+@techjm/rate-limiter *     (in apps/web and apps/worker)
+```
+
+**New environment variables:**
+```bash
+# Backup (optional)
+BACKUP_DIR=/tmp/techjm-backups       # Local backup directory
+BACKUP_S3_BUCKET=                    # Optional: S3 bucket for offsite backups
+```
+
+**Post-deployment:**
+```bash
+# Set up Uptime Kuma monitors
+npx tsx scripts/setup-uptime-kuma.ts
+
+# Push new job_errors table
+npm run db:push
+
+# Run E2E validation
+npx tsx scripts/e2e-dogfood.ts --dry-run
+
+# Access admin dashboards
+# Bull Board: http://localhost:3101/admin/queues
+# Error Dashboard: http://localhost:3000/admin/errors
+# Worker Health: http://localhost:3100/health
+# Prometheus Metrics: http://localhost:3100/metrics
+```
+
 ---
 
 ## 14. Troubleshooting
@@ -1244,6 +1539,84 @@ If discovery completes but sub-agent scoring doesn't trigger:
 - Posts must be in `scheduled`, `publishing`, `published`, or `failed` status to appear
 - Schedule a post from Content Studio first, or use the schedule API directly
 - Check that the Firebase auth token is being sent in requests
+
+### Engagement checks not firing after publish
+
+- Verify the worker is running and shows `engagement-check` in startup logs
+- Check Redis for delayed jobs: `docker compose exec redis redis-cli ZRANGE "bull:engagement-check:delayed" 0 -1`
+- Worker logs should show "Queued 4 engagement checks: 2h, 6h, 24h, 48h" after each successful publish
+- For testing, temporarily change the first checkpoint delay in `publish.job.ts` to 30 seconds
+
+### Engagement check fails with TOKEN_EXPIRED
+
+- The user's platform OAuth token has expired since the post was published
+- User needs to re-authenticate their LinkedIn/X connection
+- These jobs will not retry (token issue won't resolve itself)
+
+### Analytics dashboard shows no data
+
+- Engagement data requires published posts that have passed at least the 2h checkpoint
+- Check `topic_performance` table for rows: `SELECT * FROM topic_performance ORDER BY measured_at DESC LIMIT 10;`
+- If the table is empty, engagement checks haven't completed yet — check worker logs
+- Insights require 10+ posts with 48h checkpoint data
+
+### Firebase `auth/invalid-api-key` error
+
+Next.js in a monorepo loads `.env` from the app directory (`apps/web/`), not the monorepo root. A symlink is set up (`apps/web/.env → ../../.env`) to bridge this. If missing:
+
+```bash
+# Create symlink (already in .gitignore)
+ln -s ../../.env apps/web/.env
+
+# IMPORTANT: Restart the dev server after creating the symlink
+# Next.js only reads .env files at startup
+```
+
+### Telegram bot not receiving messages
+
+- Verify `TELEGRAM_BOT_TOKEN` is set in `.env`
+- Run the webhook setup script: `TELEGRAM_BOT_TOKEN=xxx NEXT_PUBLIC_APP_URL=https://yourapp.com npx tsx scripts/setup-telegram-webhook.ts`
+- For local development, you need a public URL (use ngrok or similar) since Telegram requires HTTPS webhooks
+- Check bot status: `curl https://api.telegram.org/bot<TOKEN>/getWebhookInfo`
+
+### Telegram notifications not sending
+
+- Check `notification_preferences` table — user must have `telegram_chat_id` set and `telegram_enabled = true`
+- Verify the specific notification toggle is enabled (e.g., `notify_publish_success`)
+- If `TELEGRAM_BOT_TOKEN` is not set, all notification code gracefully skips (no errors)
+- Test manually: go to Settings → Notifications → "Send Test Message"
+
+### Bull Board not loading
+
+- Verify the worker is running and port 3101 is accessible
+- Check worker startup logs for "Bull Board running at http://localhost:3101/admin/queues"
+- If port conflict: the bull board starts on a fixed port — kill any other process using 3101
+
+### Rate limit returning 429 unexpectedly
+
+- Rate limits are per-user, per-action with sliding windows
+- Check Redis: `docker compose exec redis redis-cli KEYS "ratelimit:*"`
+- To reset a specific limit: `docker compose exec redis redis-cli DEL "ratelimit:discovery:trigger:<userId>"`
+- Default limits are in `packages/rate-limiter/src/index.ts` — adjust `RATE_LIMITS` as needed
+
+### Backup job fails with "pg_dump not found"
+
+- `pg_dump` must be installed on the host machine (not just in Docker)
+- Install: `sudo apt install postgresql-client` (Ubuntu) or `brew install libpq` (macOS)
+- Alternatively, the backup will skip if `pg_dump` is unavailable — check worker logs
+
+### E2E dogfood test fails
+
+- Ensure a user exists with `onboarding_step = 'complete'` in the database
+- The test requires the full pipeline to have run at least once (discovery → scoring → content)
+- Run with `--verbose` for additional diagnostic output
+- For a fresh database, complete onboarding for at least one user first
+
+### LinkedIn metrics return all zeros
+
+- Personal LinkedIn profiles don't expose impression counts via API — the system estimates them
+- Org page metrics require the `r_organization_social` OAuth scope
+- Check if the LinkedIn API version header matches (currently `202401`)
 
 ---
 

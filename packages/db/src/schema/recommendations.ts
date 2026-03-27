@@ -1,5 +1,5 @@
 import { pgTable, uuid, varchar, text, numeric, timestamp } from 'drizzle-orm/pg-core';
-import { aiProviderEnum } from './ai-keys';
+import { aiProviderEnum } from './_enums';
 
 export const recommendationMatrix = pgTable('recommendation_matrix', {
   id: uuid('id').primaryKey().defaultRandom(),
