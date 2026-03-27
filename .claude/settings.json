@@ -42,7 +42,12 @@
       "Bash(redis-cli LRANGE bull:sub-agent:failed 0 0)",
       "Bash(redis-cli HGETALL bull:sub-agent:id)",
       "Bash(redis-cli ZRANGE \"bull:discovery-llm:failed\" 0 3)",
-      "Bash(npx bullmq-cli:*)"
+      "Bash(npx bullmq-cli:*)",
+      "Bash(while read:*)",
+      "Bash(do git:*)",
+      "Bash(done)",
+      "Bash(git reflog:*)",
+      "Bash(git gc:*)"
     ]
   }
 }
