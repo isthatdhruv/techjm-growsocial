@@ -9,6 +9,10 @@ export async function GET(request: NextRequest) {
 
   const connections = await db.query.platformConnections.findMany({
     where: eq(platformConnections.userId, user.id),
+    columns: {
+      connectionHealth: true,
+      tokenExpiresAt: true,
+    },
   })
 
   const hasIssues = connections.some(c => c.connectionHealth === 'expired' || c.connectionHealth === 'degraded')

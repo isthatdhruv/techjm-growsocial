@@ -34,10 +34,20 @@ interface QueueStats {
   } | null;
 }
 
-async function getToken() {
-  const { getAuth } = await import('firebase/auth');
+async function getToken(): Promise<string | undefined> {
+  const { getAuth, onAuthStateChanged } = await import('firebase/auth');
   const auth = getAuth();
-  return auth.currentUser?.getIdToken();
+  // If currentUser is already available (warm load), use it immediately
+  if (auth.currentUser) {
+    return auth.currentUser.getIdToken();
+  }
+  // Otherwise wait for Firebase to finish initialising auth state (cold load / refresh)
+  return new Promise((resolve) => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      unsub();
+      resolve(user ? user.getIdToken() : undefined);
+    });
+  });
 }
 
 function PlatformBadge({ platform }: { platform: string }) {
@@ -213,25 +223,25 @@ export default function QueuePage() {
         <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4 lg:gap-5">
           <GlassCard className="border-t-2 border-t-accent/60 p-5 lg:p-6">
             <p className="text-2xl font-bold text-white lg:text-3xl">
-              {stats.scheduledToday || '\u2014'}
+              {stats.scheduledToday ?? '\u2014'}
             </p>
             <p className="mt-1 text-[13px] text-text-muted">Scheduled Today</p>
           </GlassCard>
           <GlassCard className="border-t-2 border-t-accent/60 p-5 lg:p-6">
             <p className="text-2xl font-bold text-white lg:text-3xl">
-              {stats.scheduledThisWeek || '\u2014'}
+              {stats.scheduledThisWeek ?? '\u2014'}
             </p>
             <p className="mt-1 text-[13px] text-text-muted">Scheduled This Week</p>
           </GlassCard>
           <GlassCard className="border-t-2 border-t-accent/60 p-5 lg:p-6">
             <p className="text-2xl font-bold text-white lg:text-3xl">
-              {stats.publishedThisWeek || '\u2014'}
+              {stats.publishedThisWeek ?? '\u2014'}
             </p>
             <p className="mt-1 text-[13px] text-text-muted">Published This Week</p>
           </GlassCard>
           <GlassCard className={`border-t-2 p-5 lg:p-6 ${stats.failedCount > 0 ? 'border-t-red-500/60' : 'border-t-accent/60'}`}>
             <p className={`text-2xl font-bold lg:text-3xl ${stats.failedCount > 0 ? 'text-red-400' : 'text-white'}`}>
-              {stats.failedCount || '\u2014'}
+              {stats.failedCount ?? '\u2014'}
             </p>
             <p className="mt-1 text-[13px] text-text-muted">Failed</p>
           </GlassCard>

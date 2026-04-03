@@ -1,5 +1,5 @@
 import { pgTable, uuid, varchar, text, timestamp } from 'drizzle-orm/pg-core';
-import { onboardingStepEnum, planEnum } from './_enums';
+import { onboardingStepEnum, planEnum } from './_enums.js';
 
 export { onboardingStepEnum, planEnum };
 

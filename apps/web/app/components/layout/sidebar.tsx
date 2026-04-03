@@ -34,6 +34,15 @@ const navItems: { label: string; href: string; badge?: string; icon: React.React
     ),
   },
   {
+    label: 'Uploads',
+    href: '/dashboard/knowledge',
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75h.008v.008H12V6.75Zm0 4.5h.008v.008H12v-.008Zm0 4.5h.008v.008H12v-.008Zm-7.5-9a2.25 2.25 0 0 1 2.25-2.25h10.5A2.25 2.25 0 0 1 19.5 6.75v10.5A2.25 2.25 0 0 1 17.25 19.5H6.75A2.25 2.25 0 0 1 4.5 17.25V6.75Z" />
+      </svg>
+    ),
+  },
+  {
     label: 'Queue',
     href: '/dashboard/queue',
     icon: (

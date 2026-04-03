@@ -1,9 +1,13 @@
 import { Queue, FlowProducer } from 'bullmq';
 
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+const parsedRedisUrl = new URL(redisUrl);
+
 const connection = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
+  host: parsedRedisUrl.hostname || 'localhost',
+  port: parseInt(parsedRedisUrl.port || '6379'),
   maxRetriesPerRequest: null as null,
+  ...(parsedRedisUrl.password ? { password: parsedRedisUrl.password } : {}),
 };
 
 export const QUEUE_NAMES = {
@@ -33,10 +37,35 @@ export interface DiscoveryLLMJobData {
   provider: string;
   model: string;
   discoveryRunId: string;
+  focusQuery?: string;
 }
 
 export interface DiscoveryMergeJobData {
   userId: string;
+  discoveryRunId: string;
+  slotsTotal?: number;
+}
+
+export interface SubAgentJobData {
+  userId: string;
+  rawTopicId: string;
+  scoredTopicId: string;
+  agentType:
+    | 'sentiment'
+    | 'audience_fit'
+    | 'seo'
+    | 'competitor_gap'
+    | 'content_market_fit'
+    | 'engagement_predictor'
+    | 'pillar_balancer';
+  provider: string;
+  model: string;
+}
+
+export interface ScoringOrchestratorJobData {
+  userId: string;
+  scoredTopicId: string;
+  rawTopicId: string;
   discoveryRunId: string;
 }
 

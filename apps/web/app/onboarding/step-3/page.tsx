@@ -8,7 +8,17 @@ import { GlassCard } from '@/app/components/glass-card';
 import { ProviderKeyInput } from '@/app/components/onboarding/provider-key-input';
 import { ModelSlotSelector } from '@/app/components/onboarding/model-slot-selector';
 
-const ALL_PROVIDERS = ['openai', 'anthropic', 'google', 'xai', 'deepseek', 'mistral', 'replicate'] as const;
+const ALL_PROVIDERS = [
+  'openai',
+  'anthropic',
+  'google',
+  'xai',
+  'deepseek',
+  'mistral',
+  'replicate',
+  'groq',
+  'openai_compatible',
+] as const;
 
 interface Recommendation {
   niche: string;
@@ -38,6 +48,19 @@ interface Caps {
   available_models: string[];
 }
 
+interface ResolvedProviderStatus {
+  provider: string;
+  source: 'user' | 'env';
+  status: 'available' | 'unavailable';
+  providerLabel?: string | null;
+  models: string[];
+  capabilities: {
+    web_search: boolean;
+    x_search: boolean;
+    image_gen: boolean;
+  };
+}
+
 const providerLabels: Record<string, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic',
@@ -46,6 +69,8 @@ const providerLabels: Record<string, string> = {
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
   replicate: 'Replicate',
+  groq: 'Groq',
+  openai_compatible: 'OpenAI-Compatible',
 };
 
 export default function Step3AIKeys() {
@@ -55,9 +80,11 @@ export default function Step3AIKeys() {
 
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  const [baseUrls, setBaseUrls] = useState<Record<string, string>>({});
   const [capabilities, setCapabilities] = useState<Record<string, Caps | null>>({});
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [recommendedProviders, setRecommendedProviders] = useState<Set<string>>(new Set());
+  const [resolvedProviders, setResolvedProviders] = useState<ResolvedProviderStatus[]>([]);
 
   const [modelConfig, setModelConfig] = useState<{
     slotA: ModelSlotConfig | null;
@@ -101,14 +128,61 @@ export default function Step3AIKeys() {
     fetchRec();
   }, [user, nicheData]);
 
+  useEffect(() => {
+    if (!user) return;
+
+    async function fetchResolvedProviders() {
+      try {
+        const token = await user?.getIdToken();
+        if (!token) return;
+        const res = await fetch('/api/onboarding/ai-keys', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+
+        const data = await res.json();
+        setResolvedProviders(data.resolvedProviders || []);
+        if (data.modelConfig) {
+          setModelConfig({
+            slotA: data.modelConfig.slotA,
+            slotB: data.modelConfig.slotB,
+            slotC: data.modelConfig.slotC,
+            slotD: data.modelConfig.slotD,
+            subAgentModel: data.modelConfig.subAgentModel,
+            captionModel: data.modelConfig.captionModel,
+            imageModel: data.modelConfig.imageModel,
+          });
+        }
+      } catch {
+        // Non-blocking
+      }
+    }
+
+    fetchResolvedProviders();
+  }, [user]);
+
   const validatedProviders: ValidatedProvider[] = ALL_PROVIDERS
     .filter((p) => capabilities[p]?.available_models)
     .map((p) => ({
       provider: p,
+      baseUrl: baseUrls[p],
       capabilities: capabilities[p]!,
     }));
 
-  const allModels = validatedProviders.flatMap((vp) =>
+  const availableProvidersForConfig: ValidatedProvider[] = resolvedProviders
+    .filter((provider) => provider.status === 'available')
+    .map((provider) => ({
+      provider: provider.provider as ValidatedProvider['provider'],
+      baseUrl: provider.provider === 'openai_compatible' ? baseUrls[provider.provider] : undefined,
+      capabilities: {
+        web_search: provider.capabilities.web_search,
+        x_search: provider.capabilities.x_search,
+        image_gen: provider.capabilities.image_gen,
+        available_models: provider.models,
+      },
+    }));
+
+  const allModels = availableProvidersForConfig.flatMap((vp) =>
     vp.capabilities.available_models.map((m) => ({ provider: vp.provider, model: m })),
   );
 
@@ -123,7 +197,11 @@ export default function Step3AIKeys() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ provider, apiKey: apiKeys[provider] }),
+          body: JSON.stringify({
+            provider,
+            apiKey: apiKeys[provider],
+            ...(baseUrls[provider] ? { baseUrl: baseUrls[provider] } : {}),
+          }),
         });
 
         const data = await res.json();
@@ -141,7 +219,7 @@ export default function Step3AIKeys() {
         setErrors((prev) => ({ ...prev, [provider]: 'Validation failed' }));
       }
     },
-    [user, apiKeys],
+    [user, apiKeys, baseUrls],
   );
 
   function applyRecommendation() {
@@ -160,7 +238,7 @@ export default function Step3AIKeys() {
   }
 
   async function handleSave() {
-    if (!user || validatedProviders.length === 0) return;
+    if (!user) return;
     setSaving(true);
     setError('');
 
@@ -170,6 +248,7 @@ export default function Step3AIKeys() {
       const keysPayload = validatedProviders.map((vp) => ({
         provider: vp.provider,
         apiKey: apiKeys[vp.provider],
+        ...(vp.baseUrl ? { baseUrl: vp.baseUrl } : {}),
         capabilities: {
           web_search: vp.capabilities.web_search,
           x_search: vp.capabilities.x_search,
@@ -192,7 +271,7 @@ export default function Step3AIKeys() {
         throw new Error(data.error || 'Failed to save');
       }
 
-      setAIKeysData({ validatedProviders, modelConfig });
+      setAIKeysData({ validatedProviders: availableProvidersForConfig, modelConfig });
       setOnboardingStep('4');
       router.push('/onboarding/step-4');
     } catch (err) {
@@ -202,7 +281,7 @@ export default function Step3AIKeys() {
     }
   }
 
-  const hasWebSearchProvider = validatedProviders.some((p) =>
+  const hasWebSearchProvider = availableProvidersForConfig.some((p) =>
     ['openai', 'anthropic', 'google', 'xai'].includes(p.provider),
   );
 
@@ -261,7 +340,7 @@ export default function Step3AIKeys() {
       <GlassCard className="p-6" id="provider-keys">
         <h2 className="mb-1 text-lg font-bold text-white">API Provider Keys</h2>
         <p className="mb-4 text-sm text-text-muted">
-          Add your API keys. We encrypt them with AES-256 before storage.
+          API keys are optional. If you skip them, the app will use any platform keys configured on the server.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           {ALL_PROVIDERS.map((provider) => (
@@ -271,6 +350,8 @@ export default function Step3AIKeys() {
               recommended={recommendedProviders.has(provider)}
               apiKey={apiKeys[provider] || ''}
               onApiKeyChange={(key) => setApiKeys((prev) => ({ ...prev, [provider]: key }))}
+              baseUrl={baseUrls[provider] || ''}
+              onBaseUrlChange={(baseUrl) => setBaseUrls((prev) => ({ ...prev, [provider]: baseUrl }))}
               onValidate={() => handleValidate(provider)}
               capabilities={capabilities[provider] || null}
               error={errors[provider] || null}
@@ -280,7 +361,7 @@ export default function Step3AIKeys() {
       </GlassCard>
 
       {/* Section C — Model Slot Assignment */}
-      {validatedProviders.length > 0 && (
+      {availableProvidersForConfig.length > 0 && (
         <GlassCard className="p-6">
           <h2 className="mb-1 text-lg font-bold text-white">Model Assignments</h2>
           <p className="mb-4 text-sm text-text-muted">
@@ -303,7 +384,7 @@ export default function Step3AIKeys() {
       )}
 
       {/* Section D — Fallback notice */}
-      {validatedProviders.some((p) => ['deepseek', 'mistral'].includes(p.provider)) && (
+      {availableProvidersForConfig.some((p) => ['deepseek', 'mistral'].includes(p.provider)) && (
         <div className="rounded-xl border border-blue/20 bg-blue/5 px-4 py-3 text-sm text-secondary">
           <strong>Note:</strong> DeepSeek/Mistral don&apos;t have web search. We&apos;ll automatically
           feed them real-time data from Hacker News, Reddit, and RSS feeds.
@@ -311,7 +392,7 @@ export default function Step3AIKeys() {
       )}
 
       {/* Warnings */}
-      {validatedProviders.length > 0 && !hasWebSearchProvider && (
+      {availableProvidersForConfig.length > 0 && !hasWebSearchProvider && (
         <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-3 text-sm text-yellow-300">
           You have no web-search-capable provider. Discovery will use cached data only.
         </div>
@@ -327,16 +408,16 @@ export default function Step3AIKeys() {
         </button>
         <button
           onClick={handleSave}
-          disabled={validatedProviders.length === 0 || saving}
+          disabled={saving}
           className="rounded-xl bg-accent px-8 py-3 text-sm font-semibold text-white transition-all hover:bg-accent-hover glow-accent-sm disabled:cursor-not-allowed disabled:opacity-40"
         >
           {saving ? 'Saving...' : 'Save & Continue'}
         </button>
       </div>
 
-      {validatedProviders.length === 0 && (
+      {availableProvidersForConfig.length === 0 && (
         <p className="text-center text-xs text-text-muted/50">
-          Validate at least 1 API key to continue
+          No providers are available yet. You can still continue and add keys later, but AI features will stay unavailable until a user or platform key exists.
         </p>
       )}
 

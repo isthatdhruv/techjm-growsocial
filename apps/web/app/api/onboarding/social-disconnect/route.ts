@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helpers';
-import { db, platformConnections } from '@techjm/db';
-import { eq, and } from 'drizzle-orm';
+import { disconnectPlatformConnection } from '@/lib/social-connections';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -23,14 +22,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid platform' }, { status: 400 });
     }
 
-    await db
-      .delete(platformConnections)
-      .where(
-        and(
-          eq(platformConnections.userId, user.id),
-          eq(platformConnections.platform, parsed.data.platform),
-        ),
-      );
+    await disconnectPlatformConnection(user.id, parsed.data.platform);
 
     return NextResponse.json({ success: true });
   } catch (err) {

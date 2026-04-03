@@ -3,7 +3,7 @@ import { db, posts, platformConnections, decrypt } from '@techjm/db';
 import { eq, and } from 'drizzle-orm';
 import { connection } from '../../redis.js';
 import { publishQueue, engagementCheckQueue, QUEUE_NAMES, type PublishJobData, type EngagementCheckJobData } from '../../queues.js';
-import { publishViaPostiz } from './postiz-client.js';
+import { publishViaPostiz, isPostizConfigured } from './postiz-client.js';
 import { publishDirect } from './direct-publisher.js';
 import { logPublishAttempt } from './log.js';
 import { notifyPublishResult } from '../../notifications/publish-notify.js';
@@ -13,12 +13,57 @@ import { withErrorHandling } from '../../lib/error-handler.js';
 const RETRY_DELAYS = [60_000, 300_000, 900_000];
 const MAX_RETRIES = 3;
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    if (error.message) return error.message;
+
+    const cause = (error as Error & { cause?: unknown }).cause;
+    if (cause instanceof Error && cause.message) return cause.message;
+
+    const aggregateErrors = (error as Error & { errors?: unknown[] }).errors;
+    if (Array.isArray(aggregateErrors) && aggregateErrors.length > 0) {
+      return aggregateErrors
+        .map((item) => (item instanceof Error ? item.message : String(item)))
+        .filter(Boolean)
+        .join('; ');
+    }
+
+    return error.name || 'Unknown error';
+  }
+
+  if (typeof error === 'string') return error;
+  return String(error);
+}
+
+function logPublishEvent(
+  platform: 'linkedin' | 'x',
+  status: 'start' | 'failure',
+  context: Record<string, unknown>,
+) {
+  const payload = {
+    event: 'social.publish',
+    platform,
+    status,
+    userId: context.userId,
+    postId: context.postId,
+    error: context.error,
+  };
+
+  if (status === 'failure') {
+    console.error('[social]', payload);
+    return;
+  }
+
+  console.info('[social]', payload);
+}
+
 async function processPublish(job: Job<PublishJobData>) {
   const { userId, postId, platform, retryCount } = job.data;
 
   job.log(
     `Publishing: post=${postId}, platform=${platform}, attempt=${retryCount + 1}/${MAX_RETRIES + 1}`,
   );
+  logPublishEvent(platform, 'start', { userId, postId });
 
   // 1. Load post data
   const post = await db.query.posts.findFirst({
@@ -36,10 +81,29 @@ async function processPublish(job: Job<PublishJobData>) {
       eq(platformConnections.userId, userId),
       eq(platformConnections.platform, platform),
     ),
+    columns: {
+      accessTokenEnc: true,
+      orgUrn: true,
+      accountId: true,
+      connectionHealth: true,
+    },
   });
   if (!conn) {
     await logPublishAttempt(postId, platform, false, null, 'No platform connection found');
     throw new Error(`No ${platform} connection for user ${userId}`);
+  }
+
+  if (conn.connectionHealth === 'expired' || conn.connectionHealth === 'degraded') {
+    await logPublishAttempt(
+      postId,
+      platform,
+      false,
+      null,
+      `Platform connection is ${conn.connectionHealth}`,
+    );
+    throw new Error(
+      `${platform} connection is ${conn.connectionHealth}. Reconnect before publishing.`,
+    );
   }
 
   const accessToken = decrypt(conn.accessTokenEnc);
@@ -53,19 +117,32 @@ async function processPublish(job: Job<PublishJobData>) {
   // 4. Attempt publishing
   let externalId: string | null = null;
   let publishError: string | null = null;
+  const postizEnabled = isPostizConfigured();
 
   try {
-    // Try Postiz first
-    const postizResult = await publishViaPostiz(
-      { caption: post.caption, imageUrl: post.imageUrl, hashtags: post.hashtags },
-      platform,
-      accessToken,
-      conn.orgUrn,
-    );
-    externalId = postizResult.externalId;
-    job.log(`Published via Postiz: externalId=${externalId}`);
+    if (postizEnabled) {
+      const postizResult = await publishViaPostiz(
+        { caption: post.caption, imageUrl: post.imageUrl, hashtags: post.hashtags },
+        platform,
+        accessToken,
+        conn.orgUrn,
+      );
+      externalId = postizResult.externalId;
+      job.log(`Published via Postiz: externalId=${externalId}`);
+    } else {
+      job.log('Postiz not configured. Publishing via direct API.');
+      const directResult = await publishDirect(
+        { caption: post.caption, imageUrl: post.imageUrl, hashtags: post.hashtags },
+        platform,
+        accessToken,
+        conn.orgUrn,
+        conn.accountId,
+      );
+      externalId = directResult.externalId;
+      job.log(`Published via direct API: externalId=${externalId}`);
+    }
   } catch (postizError: unknown) {
-    const postizMsg = postizError instanceof Error ? postizError.message : 'Unknown Postiz error';
+    const postizMsg = getErrorMessage(postizError) || 'Unknown Postiz error';
     job.log(`Postiz failed: ${postizMsg}. Trying direct API...`);
 
     try {
@@ -75,14 +152,21 @@ async function processPublish(job: Job<PublishJobData>) {
         platform,
         accessToken,
         conn.orgUrn,
+        conn.accountId,
       );
       externalId = directResult.externalId;
       job.log(`Published via direct API: externalId=${externalId}`);
     } catch (directError: unknown) {
-      const directMsg =
-        directError instanceof Error ? directError.message : 'Unknown direct error';
-      publishError = `Postiz: ${postizMsg}. Direct: ${directMsg}`;
+      const directMsg = getErrorMessage(directError) || 'Unknown direct error';
+      publishError = postizEnabled
+        ? `Postiz: ${postizMsg}. Direct: ${directMsg}`
+        : directMsg;
       job.log(`Both publishing methods failed: ${publishError}`);
+      logPublishEvent(platform, 'failure', {
+        userId,
+        postId,
+        error: publishError,
+      });
     }
   }
 
@@ -149,6 +233,12 @@ async function processPublish(job: Job<PublishJobData>) {
     if (retryCount < MAX_RETRIES) {
       const nextDelay = RETRY_DELAYS[retryCount] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
       job.log(`Retry ${retryCount + 1}/${MAX_RETRIES} in ${nextDelay / 1000}s`);
+
+      // Keep the DB status honest while the job sits in BullMQ backoff.
+      await db
+        .update(posts)
+        .set({ status: 'scheduled', updatedAt: new Date() })
+        .where(eq(posts.id, postId));
 
       await publishQueue.add(
         `publish-retry-${postId}-${retryCount + 1}`,

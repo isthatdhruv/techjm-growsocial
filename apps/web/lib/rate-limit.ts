@@ -8,6 +8,11 @@ export async function withRateLimit(
   userId: string,
   action: string,
 ): Promise<NextResponse | null> {
+  if (process.env.NODE_ENV !== 'production') {
+    console.info(`[rate-limit] bypassed in ${process.env.NODE_ENV || 'unknown'} for action=${action} user=${userId}`);
+    return null;
+  }
+
   const result = await limiter.enforce(userId, action);
 
   if (!result.allowed) {

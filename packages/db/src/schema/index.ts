@@ -8,37 +8,40 @@ export {
   connectionHealthEnum,
   postStatusEnum,
   errorCategoryEnum,
-} from './_enums';
+} from './_enums.js';
 
 // Auth
-export { users } from './auth';
+export { users } from './auth.js';
 
 // Niche
-export { userNicheProfiles } from './niche';
+export { userNicheProfiles } from './niche.js';
 
 // AI Keys & Model Config
-export { userAiKeys, userModelConfig } from './ai-keys';
+export { userAiKeys, userModelConfig } from './ai-keys.js';
 
 // Platform Connections
-export { platformConnections } from './connections';
+export { platformConnections } from './connections.js';
 
 // Recommendations
-export { recommendationMatrix } from './recommendations';
+export { recommendationMatrix } from './recommendations.js';
 
 // Topics
-export { rawTopics, fallbackGroundingCache } from './topics';
+export { rawTopics, fallbackGroundingCache } from './topics.js';
 
 // Scoring
-export { scoredTopics, scoringFeedback, scoringWeights } from './scoring';
+export { scoredTopics, scoringFeedback, scoringWeights } from './scoring.js';
 
 // Posts
-export { posts, publishLog, topicPerformance } from './posts';
+export { posts, publishLog, topicPerformance } from './posts.js';
 
 // Notifications
-export { notificationPreferences } from './notifications';
+export { notificationPreferences } from './notifications.js';
+
+// Knowledge
+export { knowledgeDocuments, knowledgeChunks, knowledgeSearchLogs } from './knowledge.js';
 
 // Errors
-export { jobErrors } from './errors';
+export { jobErrors } from './errors.js';
 
 // Relations (all centralized)
 export {
@@ -55,5 +58,8 @@ export {
   publishLogRelations,
   topicPerformanceRelations,
   notificationPreferencesRelations,
+  knowledgeDocumentsRelations,
+  knowledgeChunksRelations,
+  knowledgeSearchLogsRelations,
   jobErrorsRelations,
-} from './_relations';
+} from './_relations.js';

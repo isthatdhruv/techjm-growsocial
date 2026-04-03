@@ -1,12 +1,13 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as schema from './schema/index';
-
-const connectionString = process.env.DATABASE_URL!;
-const client = postgres(connectionString);
-
-export const db = drizzle(client, { schema });
+export { db } from './client.js';
 
 // Re-export everything
-export * from './schema/index';
-export { encrypt, decrypt, encryptApiKey, decryptApiKey } from './encryption';
+export * from './schema/index.js';
+export { encrypt, decrypt, encryptApiKey, decryptApiKey } from './encryption.js';
+export {
+  getActiveApiKey,
+  getAvailableAiProviders,
+  isLikelyImageModel,
+  selectImageModel,
+  selectTextModel,
+} from './ai-provider-config.js';
+export type { SupportedAIProvider, ProviderConfig } from './ai-provider-config.js';

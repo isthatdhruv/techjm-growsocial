@@ -9,9 +9,9 @@ import {
   jsonb,
   timestamp,
 } from 'drizzle-orm/pg-core';
-import { users } from './auth';
-import { scoredTopics } from './scoring';
-import { platformEnum, postStatusEnum } from './_enums';
+import { users } from './auth.js';
+import { scoredTopics } from './scoring.js';
+import { platformEnum, postStatusEnum } from './_enums.js';
 
 export { postStatusEnum };
 

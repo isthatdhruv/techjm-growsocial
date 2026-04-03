@@ -8,6 +8,13 @@
       "when": 1774610548058,
       "tag": "0000_wonderful_microbe",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1774890000000,
+      "tag": "0001_social_connection_metadata",
+      "breakpoints": true
     }
   ]
 }

@@ -18,6 +18,8 @@ const providerLabels: Record<string, string> = {
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
   replicate: 'Replicate',
+  groq: 'Groq',
+  openai_compatible: 'OpenAI-Compatible',
 };
 
 interface ModelOption {

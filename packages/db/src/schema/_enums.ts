@@ -19,6 +19,8 @@ export const aiProviderEnum = pgEnum('ai_provider', [
   'deepseek',
   'mistral',
   'replicate',
+  'groq',
+  'openai_compatible',
 ]);
 
 export const consensusTierEnum = pgEnum('consensus_tier', [

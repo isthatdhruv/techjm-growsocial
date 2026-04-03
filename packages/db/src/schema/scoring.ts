@@ -10,8 +10,8 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core';
-import { users } from './auth';
-import { rawTopics } from './topics';
+import { users } from './auth.js';
+import { rawTopics } from './topics.js';
 
 export const scoredTopics = pgTable('scored_topics', {
   id: uuid('id').primaryKey().defaultRandom(),

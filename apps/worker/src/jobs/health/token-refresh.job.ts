@@ -11,6 +11,7 @@ async function processTokenRefresh(job: Job) {
     where: and(
       lt(platformConnections.tokenExpiresAt, twoWeeksFromNow),
       isNotNull(platformConnections.refreshTokenEnc),
+      eq(platformConnections.isActive, true),
     ),
   })
 

@@ -1,5 +1,5 @@
 import type { GroundingItem } from '../../types';
-import { getDevtoTags } from '../niche-mappings';
+import { getDevtoTags } from '../niche-mappings.js';
 
 interface DevToArticle {
   title: string;

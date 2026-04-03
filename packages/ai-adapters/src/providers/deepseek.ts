@@ -10,11 +10,11 @@ import type {
   NicheContext,
   SubAgentResult,
   SubAgentType,
-} from '../types';
-import { parseJsonResponse, mapApiError } from '../utils';
-import { buildDiscoveryPrompt } from '../prompts/discovery';
-import { buildSubAgentPrompt } from '../prompts/sub-agent';
-import { buildCaptionPrompt, buildImagePromptPrompt } from '../prompts/caption';
+} from '../types.js';
+import { parseJsonResponse, mapApiError } from '../utils.js';
+import { buildDiscoveryPrompt } from '../prompts/discovery.js';
+import { buildSubAgentPrompt } from '../prompts/sub-agent.js';
+import { buildCaptionPrompt, buildImagePromptPrompt } from '../prompts/caption.js';
 
 export class DeepSeekAdapter implements AIAdapter {
   provider = 'deepseek' as const;

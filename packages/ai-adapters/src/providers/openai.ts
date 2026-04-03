@@ -11,11 +11,11 @@ import type {
   NicheContext,
   SubAgentResult,
   SubAgentType,
-} from '../types';
-import { parseJsonResponse, mapApiError } from '../utils';
-import { buildDiscoveryPrompt } from '../prompts/discovery';
-import { buildSubAgentPrompt } from '../prompts/sub-agent';
-import { buildCaptionPrompt, buildImagePromptPrompt } from '../prompts/caption';
+} from '../types.js';
+import { parseJsonResponse, mapApiError } from '../utils.js';
+import { buildDiscoveryPrompt } from '../prompts/discovery.js';
+import { buildSubAgentPrompt } from '../prompts/sub-agent.js';
+import { buildCaptionPrompt, buildImagePromptPrompt } from '../prompts/caption.js';
 
 export class OpenAIAdapter implements AIAdapter {
   provider: AIProvider = 'openai';
@@ -194,7 +194,8 @@ export class OpenAIAdapter implements AIAdapter {
       });
 
       const firstImage = response.data?.[0];
-      const imageUrl = firstImage?.url ?? firstImage?.b64_json ?? '';
+      const imageUrl = firstImage?.url
+        ?? (firstImage?.b64_json ? `data:image/png;base64,${firstImage.b64_json}` : '');
 
       return {
         image_url: imageUrl,

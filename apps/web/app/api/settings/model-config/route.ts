@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/auth-helpers'
-import { db, userModelConfig, userAiKeys } from '@techjm/db'
+import { db, userModelConfig, getAvailableAiProviders } from '@techjm/db'
 import { eq } from 'drizzle-orm'
 
 export async function GET(request: NextRequest) {
@@ -21,11 +21,8 @@ export async function PATCH(request: NextRequest) {
   const body = await request.json()
 
   // Validate that assigned providers have valid keys
-  const userKeys = await db.query.userAiKeys.findMany({
-    where: eq(userAiKeys.userId, user.id),
-    columns: { provider: true },
-  })
-  const validProviders = new Set<string>(userKeys.map(k => k.provider))
+  const availableProviders = await getAvailableAiProviders(user.id)
+  const validProviders = new Set<string>(availableProviders.map((provider) => provider.provider))
 
   const slotFields = ['slotA', 'slotB', 'slotC', 'slotD', 'subAgentModel', 'captionModel', 'imageModel'] as const
   const updates: Record<string, unknown> = { updatedAt: new Date() }

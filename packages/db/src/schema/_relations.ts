@@ -1,13 +1,14 @@
 import { relations } from 'drizzle-orm';
-import { users } from './auth';
-import { userNicheProfiles } from './niche';
-import { userAiKeys, userModelConfig } from './ai-keys';
-import { platformConnections } from './connections';
-import { rawTopics } from './topics';
-import { scoredTopics, scoringFeedback, scoringWeights } from './scoring';
-import { posts, publishLog, topicPerformance } from './posts';
-import { notificationPreferences } from './notifications';
-import { jobErrors } from './errors';
+import { users } from './auth.js';
+import { userNicheProfiles } from './niche.js';
+import { userAiKeys, userModelConfig } from './ai-keys.js';
+import { platformConnections } from './connections.js';
+import { rawTopics } from './topics.js';
+import { scoredTopics, scoringFeedback, scoringWeights } from './scoring.js';
+import { posts, publishLog, topicPerformance } from './posts.js';
+import { notificationPreferences } from './notifications.js';
+import { knowledgeDocuments, knowledgeChunks, knowledgeSearchLogs } from './knowledge.js';
+import { jobErrors } from './errors.js';
 
 // ── Users ──
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -29,6 +30,9 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     fields: [users.id],
     references: [notificationPreferences.userId],
   }),
+  knowledgeDocuments: many(knowledgeDocuments),
+  knowledgeChunks: many(knowledgeChunks),
+  knowledgeSearchLogs: many(knowledgeSearchLogs),
   jobErrors: many(jobErrors),
 }));
 
@@ -144,6 +148,33 @@ export const topicPerformanceRelations = relations(topicPerformance, ({ one }) =
 export const notificationPreferencesRelations = relations(notificationPreferences, ({ one }) => ({
   user: one(users, {
     fields: [notificationPreferences.userId],
+    references: [users.id],
+  }),
+}));
+
+// ── Knowledge ──
+export const knowledgeDocumentsRelations = relations(knowledgeDocuments, ({ one, many }) => ({
+  user: one(users, {
+    fields: [knowledgeDocuments.userId],
+    references: [users.id],
+  }),
+  chunks: many(knowledgeChunks),
+}));
+
+export const knowledgeChunksRelations = relations(knowledgeChunks, ({ one }) => ({
+  user: one(users, {
+    fields: [knowledgeChunks.userId],
+    references: [users.id],
+  }),
+  document: one(knowledgeDocuments, {
+    fields: [knowledgeChunks.documentId],
+    references: [knowledgeDocuments.id],
+  }),
+}));
+
+export const knowledgeSearchLogsRelations = relations(knowledgeSearchLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [knowledgeSearchLogs.userId],
     references: [users.id],
   }),
 }));

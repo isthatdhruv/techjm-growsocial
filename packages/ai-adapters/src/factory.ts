@@ -1,11 +1,13 @@
-import type { AIProvider, AIAdapter, AdapterCapabilities } from './types';
-import { OpenAIAdapter } from './providers/openai';
-import { AnthropicAdapter } from './providers/anthropic';
-import { GoogleAdapter } from './providers/google';
-import { XAIAdapter } from './providers/xai';
-import { DeepSeekAdapter } from './providers/deepseek';
-import { MistralAdapter } from './providers/mistral';
-import { ReplicateAdapter } from './providers/replicate';
+import type { AIProvider, AIAdapter, AdapterCapabilities } from './types.js';
+import { OpenAIAdapter } from './providers/openai.js';
+import { AnthropicAdapter } from './providers/anthropic.js';
+import { GoogleAdapter } from './providers/google.js';
+import { XAIAdapter } from './providers/xai.js';
+import { DeepSeekAdapter } from './providers/deepseek.js';
+import { MistralAdapter } from './providers/mistral.js';
+import { ReplicateAdapter } from './providers/replicate.js';
+import { GroqAdapter } from './providers/groq.js';
+import { OpenAICompatibleAdapter } from './providers/openai-compatible.js';
 
 const adapters: Record<AIProvider, AIAdapter> = {
   openai: new OpenAIAdapter(),
@@ -15,40 +17,60 @@ const adapters: Record<AIProvider, AIAdapter> = {
   deepseek: new DeepSeekAdapter(),
   mistral: new MistralAdapter(),
   replicate: new ReplicateAdapter(),
+  groq: new GroqAdapter(),
+  openai_compatible: new OpenAICompatibleAdapter({
+    baseURL: process.env.OPENAI_COMPATIBLE_BASE_URL || 'https://api.openai.com/v1',
+    providerName: 'OpenAI-compatible provider',
+    providerId: 'openai_compatible',
+  }),
 };
 
 // Model cost priority lists (cheapest/best for each task)
 const SUB_AGENT_PRIORITY: { provider: AIProvider; model: string }[] = [
-  { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
-  { provider: 'openai', model: 'gpt-5.4-nano' },
-  { provider: 'google', model: 'gemini-2.5-flash-lite' },
+  { provider: 'anthropic', model: 'claude-3-5-haiku-latest' },
+  { provider: 'openai', model: 'gpt-4o-mini' },
+  { provider: 'google', model: 'gemini-1.5-flash' },
   { provider: 'deepseek', model: 'deepseek-chat' },
-  { provider: 'mistral', model: 'mistral-medium-latest' },
+  { provider: 'mistral', model: 'mistral-large-latest' },
 ];
 
 const CAPTION_PRIORITY: { provider: AIProvider; model: string }[] = [
-  { provider: 'anthropic', model: 'claude-sonnet-4-6-20250514' },
-  { provider: 'openai', model: 'gpt-5.4-mini' },
-  { provider: 'google', model: 'gemini-3.1-pro' },
-  { provider: 'xai', model: 'grok-4.1-fast' },
+  { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+  { provider: 'anthropic', model: 'claude-3-5-sonnet-latest' },
+  { provider: 'openai', model: 'gpt-4o' },
+  { provider: 'google', model: 'gemini-1.5-pro' },
+  { provider: 'xai', model: 'grok-2-latest' },
 ];
 
 const DISCOVERY_PRIORITY: { provider: AIProvider; model: string }[] = [
-  { provider: 'openai', model: 'gpt-5.4-mini' },
-  { provider: 'anthropic', model: 'claude-sonnet-4-6-20250514' },
-  { provider: 'google', model: 'gemini-3.1-pro' },
-  { provider: 'xai', model: 'grok-4.1-fast' },
+  { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+  { provider: 'openai', model: 'gpt-4o-mini' },
+  { provider: 'anthropic', model: 'claude-3-5-sonnet-latest' },
+  { provider: 'google', model: 'gemini-1.5-pro' },
+  { provider: 'xai', model: 'grok-2-latest' },
 ];
 
 export class AdapterFactory {
-  static getAdapter(provider: AIProvider): AIAdapter {
+  static getAdapter(provider: AIProvider, options?: { baseUrl?: string | null }): AIAdapter {
+    if (provider === 'openai_compatible') {
+      return new OpenAICompatibleAdapter({
+        baseURL: options?.baseUrl || process.env.OPENAI_COMPATIBLE_BASE_URL || 'https://api.openai.com/v1',
+        providerName: 'OpenAI-compatible provider',
+        providerId: provider,
+      });
+    }
+
     const adapter = adapters[provider];
     if (!adapter) throw new Error(`No adapter for provider: ${provider}`);
     return adapter;
   }
 
-  static async validateKey(provider: AIProvider, apiKey: string): Promise<AdapterCapabilities> {
-    const adapter = this.getAdapter(provider);
+  static async validateKey(
+    provider: AIProvider,
+    apiKey: string,
+    options?: { baseUrl?: string | null },
+  ): Promise<AdapterCapabilities> {
+    const adapter = this.getAdapter(provider, options);
     return adapter.testConnection(apiKey);
   }
 

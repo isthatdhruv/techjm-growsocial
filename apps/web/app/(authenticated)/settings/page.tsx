@@ -1,7 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { GlassCard } from '../../components/glass-card';
+
+function decodeHtmlEntities(value: string) {
+  if (typeof window === 'undefined') {
+    return value;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = value;
+  return textarea.value;
+}
 
 type SettingsTab = 'niche' | 'ai' | 'socials' | 'notifications' | 'account';
 
@@ -16,6 +27,18 @@ interface AiKeyEntry {
 interface ModelSlot {
   provider: string;
   model: string;
+}
+
+interface ResolvedProvider {
+  provider: string;
+  source: 'user' | 'env';
+  status: 'available' | 'unavailable';
+  models: string[];
+  capabilities: {
+    web_search: boolean;
+    x_search: boolean;
+    image_gen: boolean;
+  };
 }
 
 async function getToken() {
@@ -152,6 +175,7 @@ function NicheTab() {
 
 function AiKeysTab() {
   const [keys, setKeys] = useState<AiKeyEntry[]>([]);
+  const [resolvedProviders, setResolvedProviders] = useState<ResolvedProvider[]>([]);
   const [config, setConfig] = useState<Record<string, ModelSlot | null> | null>(null);
   const [loading, setLoading] = useState(true);
   const [addingProvider, setAddingProvider] = useState<string | null>(null);
@@ -168,6 +192,7 @@ function AiKeysTab() {
       if (keysRes.ok) {
         const data = await keysRes.json();
         setKeys(data.keys || []);
+        setResolvedProviders(data.resolvedProviders || []);
       }
       if (configRes.ok) {
         const data = await configRes.json();
@@ -189,6 +214,7 @@ function AiKeysTab() {
     if (res.ok) {
       const data = await res.json();
       setKeys(data.keys);
+      setResolvedProviders(data.resolvedProviders || []);
       setAddingProvider(null);
       setNewKeyValue('');
     } else {
@@ -209,6 +235,7 @@ function AiKeysTab() {
     if (res.ok) {
       const data = await res.json();
       setKeys(data.keys);
+      setResolvedProviders(data.resolvedProviders || []);
     }
   };
 
@@ -222,6 +249,7 @@ function AiKeysTab() {
     if (res.ok) {
       const data = await res.json();
       setKeys(data.keys);
+      setResolvedProviders(data.resolvedProviders || []);
     } else {
       const err = await res.json();
       alert(err.error || 'Re-validation failed');
@@ -243,7 +271,11 @@ function AiKeysTab() {
 
   if (loading) return <LoadingSpinner />;
 
-  const connectedProviders = new Set(keys.map(k => k.provider));
+  const connectedProviders = new Set(
+    resolvedProviders
+      .filter((provider) => provider.status === 'available')
+      .map((provider) => provider.provider),
+  );
 
   return (
     <div className="space-y-6">
@@ -253,19 +285,36 @@ function AiKeysTab() {
         <div className="grid gap-3 sm:grid-cols-2">
           {PROVIDERS.map((prov) => {
             const key = keys.find(k => k.provider === prov.id);
+            const resolved = resolvedProviders.find((provider) => provider.provider === prov.id);
             const caps = key?.capabilities as { models?: string[]; image_gen?: boolean; web_search?: boolean; x_search?: boolean } | undefined;
-            const modelList = Array.isArray(caps?.models) ? caps.models : [];
+            const modelList = Array.isArray(caps?.models)
+              ? caps.models
+              : resolved?.models || [];
+            const sourceLabel =
+              resolved?.status === 'unavailable'
+                ? 'Unavailable'
+                : resolved?.source === 'user'
+                  ? 'User key'
+                  : 'Platform key';
 
             return (
               <div key={prov.id} className="rounded-lg border border-white/6 bg-white/[0.02] p-3">
                 <div className="flex items-center justify-between">
                   <span className={`text-sm font-medium ${prov.color}`}>{prov.name}</span>
-                  {key ? (
-                    <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[10px] text-green-400">Connected</span>
-                  ) : null}
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] ${
+                      resolved?.status === 'unavailable'
+                        ? 'bg-red-500/10 text-red-300'
+                        : resolved?.source === 'user'
+                          ? 'bg-green-500/20 text-green-400'
+                          : 'bg-blue-500/20 text-blue-300'
+                    }`}
+                  >
+                    {sourceLabel}
+                  </span>
                 </div>
 
-                {key ? (
+                {resolved?.status === 'available' ? (
                   <div className="mt-2 space-y-2">
                     {modelList.length > 0 && (
                       <div className="flex flex-wrap gap-1">
@@ -278,29 +327,35 @@ function AiKeysTab() {
                       </div>
                     )}
                     <div className="flex flex-wrap gap-1">
-                      {caps?.image_gen && <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[10px] text-purple-400">Image Gen</span>}
-                      {caps?.web_search && <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] text-blue-400">Web Search</span>}
-                      {caps?.x_search && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/60">X Search</span>}
+                      {resolved?.capabilities.image_gen && <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[10px] text-purple-400">Image Gen</span>}
+                      {resolved?.capabilities.web_search && <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] text-blue-400">Web Search</span>}
+                      {resolved?.capabilities.x_search && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/60">X Search</span>}
                     </div>
-                    {key.validatedAt && (
+                    {key?.validatedAt && (
                       <p className="text-[10px] text-text-muted/40">
                         Validated: {new Date(key.validatedAt).toLocaleDateString()}
                       </p>
                     )}
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => handleRevalidate(prov.id)}
-                        className="rounded bg-white/5 px-2 py-1 text-[11px] text-text-muted hover:bg-white/10"
-                      >
-                        Re-validate
-                      </button>
-                      <button
-                        onClick={() => handleRemove(prov.id)}
-                        className="rounded bg-red-500/10 px-2 py-1 text-[11px] text-red-400 hover:bg-red-500/20"
-                      >
-                        Remove
-                      </button>
-                    </div>
+                    {key ? (
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => handleRevalidate(prov.id)}
+                          className="rounded bg-white/5 px-2 py-1 text-[11px] text-text-muted hover:bg-white/10"
+                        >
+                          Re-validate
+                        </button>
+                        <button
+                          onClick={() => handleRemove(prov.id)}
+                          className="rounded bg-red-500/10 px-2 py-1 text-[11px] text-red-400 hover:bg-red-500/20"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-text-muted/50">
+                        Using platform default key. Add your own key to override it.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="mt-2">
@@ -386,22 +441,33 @@ function AiKeysTab() {
                     className="min-w-[180px] rounded-lg border border-white/10 bg-transparent px-2 py-1.5 text-[12px] text-white focus:border-accent/50 focus:outline-none"
                   >
                     <option value="" className="bg-[#111125]">Not assigned</option>
-                    {keys.map(k => {
-                      const models = (k.capabilities as any)?.models as string[] | undefined;
-                      if (!models || models.length === 0) {
-                        // For providers like Replicate that don't list models
-                        return (
-                          <option key={`${k.provider}:default`} value={`${k.provider}:default`} className="bg-[#111125]">
-                            {k.provider}
+                    {resolvedProviders
+                      .filter((provider) => provider.status === 'available')
+                      .flatMap((provider) => {
+                        const keyCaps = keys.find((entry) => entry.provider === provider.provider)?.capabilities as { models?: string[] } | undefined;
+                        const models = keyCaps?.models || provider.models;
+                        if (!models || models.length === 0) {
+                          return [
+                            <option
+                              key={`${provider.provider}:default`}
+                              value={`${provider.provider}:default`}
+                              className="bg-[#111125]"
+                            >
+                              {provider.provider}
+                            </option>,
+                          ];
+                        }
+
+                        return models.map((modelName) => (
+                          <option
+                            key={`${provider.provider}:${modelName}`}
+                            value={`${provider.provider}:${modelName}`}
+                            className="bg-[#111125]"
+                          >
+                            {provider.provider} / {modelName}
                           </option>
-                        );
-                      }
-                      return models.map(m => (
-                        <option key={`${k.provider}:${m}`} value={`${k.provider}:${m}`} className="bg-[#111125]">
-                          {k.provider} / {m}
-                        </option>
-                      ));
-                    })}
+                        ));
+                      })}
                   </select>
                 </div>
               );
@@ -415,27 +481,82 @@ function AiKeysTab() {
 
 function SocialsTab() {
   const [connections, setConnections] = useState<
-    { platform: string; accountName: string | null; connectionHealth: string | null; tokenExpiresAt: string | null; lastHealthCheck: string | null }[]
+    {
+      platform: string;
+      accountName: string | null;
+      connectionHealth: string | null;
+      tokenExpiresAt: string | null;
+      lastHealthCheck: string | null;
+      isActive: boolean;
+      accountId?: string | null;
+    }[]
   >([]);
+  const [oauthConfig, setOauthConfig] = useState<{ linkedin: { configured: boolean; missing: string[] }; x: { configured: boolean; missing: string[] } } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
+  const [message, setMessage] = useState<string>('');
+  const searchParams = useSearchParams();
+
+  async function loadConnections() {
+    const token = await getToken();
+    const res = await fetch('/api/connections', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setConnections(data.connections || []);
+      setOauthConfig(data.oauth || null);
+    }
+    setLoading(false);
+  }
 
   useEffect(() => {
     (async () => {
-      const { getAuth } = await import('firebase/auth');
-      const auth = getAuth();
-      setFirebaseUid(auth.currentUser?.uid || null);
-      const token = await getToken();
-      const res = await fetch('/api/connections', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setConnections(data.connections || []);
-      }
-      setLoading(false);
+      await loadConnections();
     })();
   }, []);
+
+  useEffect(() => {
+    const provider = searchParams.get('linkedin') ? 'LinkedIn' : searchParams.get('x') ? 'X' : null;
+    const status = searchParams.get('linkedin') || searchParams.get('x');
+    const error = searchParams.get('error');
+    const errorDescription = searchParams.get('error_description');
+
+    if (provider && status === 'connected') {
+      setMessage(`${provider} connected successfully.`);
+      void loadConnections();
+      return;
+    }
+
+    if (error) {
+      setMessage(
+        `Connection failed: ${decodeHtmlEntities(
+          errorDescription || error.replace(/_/g, ' '),
+        )}`,
+      );
+    }
+  }, [searchParams]);
+
+  const startConnect = async (platform: 'linkedin' | 'x') => {
+    setMessage('');
+    const token = await getToken();
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    const response = await fetch(`/api/auth/${platform}?returnTo=${encodeURIComponent(returnTo)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.authorizeUrl) {
+      setMessage(
+        data.error_description ||
+          data.error ||
+          `Unable to start ${platform === 'linkedin' ? 'LinkedIn' : 'X'} connection.`,
+      );
+      return;
+    }
+
+    window.location.href = data.authorizeUrl;
+  };
 
   const handleDisconnect = async (platform: string) => {
     if (!confirm(`Disconnect ${platform}?`)) return;
@@ -446,6 +567,22 @@ function SocialsTab() {
       body: JSON.stringify({ platform }),
     });
     setConnections((prev) => prev.filter((c) => c.platform !== platform));
+    setMessage(`${platform === 'linkedin' ? 'LinkedIn' : 'X'} disconnected.`);
+  };
+
+  const handleTest = async (platform: 'linkedin' | 'x') => {
+    const token = await getToken();
+    const response = await fetch('/api/settings/social/test', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ platform }),
+    });
+    const data = await response.json();
+    setMessage(data.message || (data.ok ? 'Connection looks healthy.' : 'Connection test failed.'));
+    await loadConnections();
   };
 
   if (loading) return <LoadingSpinner />;
@@ -454,6 +591,11 @@ function SocialsTab() {
 
   return (
     <div className="space-y-4">
+      {message && (
+        <div className="rounded-lg bg-white/5 px-3 py-2 text-sm text-text-muted">
+          {message}
+        </div>
+      )}
       {platforms.map((p) => {
         const conn = connections.find((c) => c.platform === p);
         const healthColor = conn?.connectionHealth === 'healthy' ? 'text-green-400' : conn?.connectionHealth === 'degraded' ? 'text-yellow-400' : conn?.connectionHealth === 'expired' ? 'text-red-400' : 'text-text-muted';
@@ -461,6 +603,7 @@ function SocialsTab() {
         const daysLeft = conn?.tokenExpiresAt
           ? Math.ceil((new Date(conn.tokenExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
           : null;
+        const isConfigured = oauthConfig?.[p]?.configured ?? true;
 
         return (
           <GlassCard key={p} className="p-4">
@@ -482,12 +625,20 @@ function SocialsTab() {
               </div>
               <div className="flex gap-2">
                 {conn && (
-                  <a
-                    href={`/api/auth/${p}?uid=${firebaseUid}`}
+                  <button
+                    onClick={() => startConnect(p)}
                     className="rounded-lg bg-white/5 px-3 py-1.5 text-xs text-text-muted hover:bg-white/10"
                   >
                     Reconnect
-                  </a>
+                  </button>
+                )}
+                {conn && (
+                  <button
+                    onClick={() => handleTest(p)}
+                    className="rounded-lg bg-white/5 px-3 py-1.5 text-xs text-text-muted hover:bg-white/10"
+                  >
+                    Test
+                  </button>
                 )}
                 {conn ? (
                   <button
@@ -496,13 +647,17 @@ function SocialsTab() {
                   >
                     Disconnect
                   </button>
+                ) : !isConfigured ? (
+                  <span className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-red-300">
+                    OAuth not configured
+                  </span>
                 ) : (
-                  <a
-                    href={`/api/auth/${p}?uid=${firebaseUid}`}
+                  <button
+                    onClick={() => startConnect(p)}
                     className="rounded-lg bg-accent/20 px-3 py-1.5 text-xs text-accent hover:bg-accent/30"
                   >
                     Connect
-                  </a>
+                  </button>
                 )}
               </div>
             </div>
@@ -518,6 +673,11 @@ function SocialsTab() {
                   <p>Last check: {new Date(conn.lastHealthCheck).toLocaleString()}</p>
                 )}
               </div>
+            )}
+            {!conn && !isConfigured && (
+              <p className="mt-2 text-[12px] text-red-300">
+                Missing {(oauthConfig?.[p].missing || []).map((item) => `\`${item}\``).join(', ')}.
+              </p>
             )}
           </GlassCard>
         );

@@ -10,11 +10,11 @@ import type {
   NicheContext,
   SubAgentResult,
   SubAgentType,
-} from '../types';
-import { parseJsonResponse, mapApiError } from '../utils';
-import { buildDiscoveryPrompt } from '../prompts/discovery';
-import { buildSubAgentPrompt } from '../prompts/sub-agent';
-import { buildCaptionPrompt, buildImagePromptPrompt } from '../prompts/caption';
+} from '../types.js';
+import { parseJsonResponse, mapApiError } from '../utils.js';
+import { buildDiscoveryPrompt } from '../prompts/discovery.js';
+import { buildSubAgentPrompt } from '../prompts/sub-agent.js';
+import { buildCaptionPrompt, buildImagePromptPrompt } from '../prompts/caption.js';
 
 function extractTextContent(response: Anthropic.Message): string {
   const textBlocks = response.content.filter(
@@ -44,7 +44,7 @@ export class AnthropicAdapter implements AIAdapter {
         x_search: false,
         image_gen: false,
         available_models: [
-          'claude-sonnet-4-6-20250514',
+          'claude-3-5-sonnet-20241022',
           'claude-haiku-4-5-20251001',
           'claude-opus-4-6-20250610',
         ],

@@ -12,6 +12,23 @@ interface SocialConnection {
   accountId: string | null;
   orgUrn: string | null;
   connectionHealth: string | null;
+  tokenExpiresAt?: string | null;
+  isActive?: boolean;
+}
+
+interface OAuthAvailability {
+  linkedin: { configured: boolean; missing: string[] };
+  x: { configured: boolean; missing: string[] };
+}
+
+function decodeHtmlEntities(value: string) {
+  if (typeof window === 'undefined') {
+    return value;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = value;
+  return textarea.value;
 }
 
 export default function Step4Socials() {
@@ -21,6 +38,7 @@ export default function Step4Socials() {
   const { setSocialData } = useOnboardingStore();
 
   const [connections, setConnections] = useState<SocialConnection[]>([]);
+  const [oauthAvailability, setOauthAvailability] = useState<OAuthAvailability | null>(null);
   const [, setLoadingConnections] = useState(true);
   const [saving, setSaving] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
@@ -30,6 +48,7 @@ export default function Step4Socials() {
   const linkedinStatus = searchParams.get('linkedin');
   const xStatus = searchParams.get('x');
   const oauthError = searchParams.get('error');
+  const oauthErrorDescription = searchParams.get('error_description');
 
   // Fetch existing connections
   useEffect(() => {
@@ -43,6 +62,7 @@ export default function Step4Socials() {
         if (res.ok) {
           const data = await res.json();
           setConnections(data.connections);
+          setOauthAvailability(data.oauth || null);
         }
       } catch { /* silent */ }
       setLoadingConnections(false);
@@ -53,11 +73,45 @@ export default function Step4Socials() {
   const linkedinConn = connections.find((c) => c.platform === 'linkedin');
   const xConn = connections.find((c) => c.platform === 'x');
   const hasAnyConnection = connections.length > 0;
+  const linkedinConfigured = oauthAvailability?.linkedin.configured ?? true;
+  const xConfigured = oauthAvailability?.x.configured ?? true;
+  const linkedinNeedsReconnect =
+    linkedinConn?.connectionHealth === 'expired' || linkedinConn?.connectionHealth === 'degraded';
+  const xNeedsReconnect =
+    xConn?.connectionHealth === 'expired' || xConn?.connectionHealth === 'degraded';
 
   async function handleConnect(platform: 'linkedin' | 'x') {
     if (!user) return;
-    // Redirect to OAuth initiation route
-    window.location.href = `/api/auth/${platform}?uid=${user.uid}`;
+    setError('');
+    const providerConfig = oauthAvailability?.[platform];
+    const configured = providerConfig?.configured ?? true;
+    if (!configured) {
+      setError(
+        `${platform === 'linkedin' ? 'LinkedIn' : 'X'} OAuth is not configured on the server. Missing ${providerConfig?.missing.join(', ') || 'required env vars'}.`,
+      );
+      return;
+    }
+
+    const token = await user.getIdToken();
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    const response = await fetch(`/api/auth/${platform}?returnTo=${encodeURIComponent(returnTo)}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.authorizeUrl) {
+      setError(
+        data.error_description ||
+          data.error ||
+          `Unable to start ${platform === 'linkedin' ? 'LinkedIn' : 'X'} connection.`,
+      );
+      return;
+    }
+
+    window.location.href = data.authorizeUrl;
   }
 
   async function handleDisconnect(platform: 'linkedin' | 'x') {
@@ -78,6 +132,26 @@ export default function Step4Socials() {
       setError('Failed to disconnect');
     } finally {
       setDisconnecting(null);
+    }
+  }
+
+  async function handleTest(platform: 'linkedin' | 'x') {
+    if (!user) return;
+    setError('');
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/settings/social/test', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ platform }),
+      });
+      const data = await response.json();
+      setError(data.message || (data.ok ? 'Connection looks healthy.' : 'Connection test failed.'));
+    } catch {
+      setError('Connection test failed.');
     }
   }
 
@@ -140,7 +214,8 @@ export default function Step4Socials() {
       )}
       {oauthError && (
         <div className="rounded-lg bg-error/10 px-4 py-2.5 text-sm text-error">
-          Connection failed: {oauthError.replace(/_/g, ' ')}
+          Connection failed:{' '}
+          {decodeHtmlEntities(oauthErrorDescription || oauthError.replace(/_/g, ' '))}
         </div>
       )}
 
@@ -155,18 +230,32 @@ export default function Step4Socials() {
             </div>
             <div>
               <p className="font-semibold text-white">LinkedIn</p>
-              <p className="text-xs text-text-muted">Post to your personal profile or company page</p>
+              <p className="text-xs text-text-muted">
+                Post to your personal profile. Company pages need LinkedIn org-scope approval.
+              </p>
             </div>
           </div>
 
           {linkedinConn ? (
             <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1.5 text-sm text-tertiary">
+              <span className={`flex items-center gap-1.5 text-sm ${linkedinNeedsReconnect ? 'text-yellow-300' : 'text-tertiary'}`}>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                 </svg>
-                {linkedinConn.accountName}
+                {linkedinConn.accountName || 'Connected'}
               </span>
+              <button
+                onClick={() => handleTest('linkedin')}
+                className="text-xs text-text-muted hover:text-white"
+              >
+                Test
+              </button>
+              <button
+                onClick={() => handleConnect('linkedin')}
+                className="text-xs text-text-muted hover:text-white"
+              >
+                Reconnect
+              </button>
               <button
                 onClick={() => handleDisconnect('linkedin')}
                 disabled={disconnecting === 'linkedin'}
@@ -178,12 +267,23 @@ export default function Step4Socials() {
           ) : (
             <button
               onClick={() => handleConnect('linkedin')}
-              className="rounded-lg bg-[#0A66C2] px-4 py-2 text-sm font-medium text-white transition-all hover:bg-[#004182]"
+              disabled={!linkedinConfigured}
+              className="rounded-lg bg-[#0A66C2] px-4 py-2 text-sm font-medium text-white transition-all hover:bg-[#004182] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Connect LinkedIn
+              {linkedinConfigured ? 'Connect LinkedIn' : 'LinkedIn not configured'}
             </button>
           )}
         </div>
+        {linkedinConn && linkedinNeedsReconnect && (
+          <p className="mt-3 text-xs text-yellow-300">
+            This LinkedIn connection needs attention before publishing. Reconnect it to continue.
+          </p>
+        )}
+        {!linkedinConn && !linkedinConfigured && (
+          <p className="mt-3 text-xs text-red-300">
+            Missing {oauthAvailability?.linkedin.missing.map((item) => `\`${item}\``).join(', ')}.
+          </p>
+        )}
       </GlassCard>
 
       {/* X (Twitter) */}
@@ -203,12 +303,24 @@ export default function Step4Socials() {
 
           {xConn ? (
             <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1.5 text-sm text-tertiary">
+              <span className={`flex items-center gap-1.5 text-sm ${xNeedsReconnect ? 'text-yellow-300' : 'text-tertiary'}`}>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                 </svg>
-                {xConn.accountName}
+                {xConn.accountName || 'Connected'}
               </span>
+              <button
+                onClick={() => handleTest('x')}
+                className="text-xs text-text-muted hover:text-white"
+              >
+                Test
+              </button>
+              <button
+                onClick={() => handleConnect('x')}
+                className="text-xs text-text-muted hover:text-white"
+              >
+                Reconnect
+              </button>
               <button
                 onClick={() => handleDisconnect('x')}
                 disabled={disconnecting === 'x'}
@@ -220,12 +332,23 @@ export default function Step4Socials() {
           ) : (
             <button
               onClick={() => handleConnect('x')}
-              className="rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-white/15"
+              disabled={!xConfigured}
+              className="rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Connect X
+              {xConfigured ? 'Connect X' : 'X not configured'}
             </button>
           )}
         </div>
+        {xConn && xNeedsReconnect && (
+          <p className="mt-3 text-xs text-yellow-300">
+            This X connection needs attention before publishing. Reconnect it to continue.
+          </p>
+        )}
+        {!xConn && !xConfigured && (
+          <p className="mt-3 text-xs text-red-300">
+            Missing {oauthAvailability?.x.missing.map((item) => `\`${item}\``).join(', ')}.
+          </p>
+        )}
       </GlassCard>
 
       {/* Minimum requirement */}

@@ -1,4 +1,4 @@
-import type { NicheContext } from '../types';
+import type { NicheContext } from '../types.js';
 
 export function formatGroundingData(items: { source: string; title: string; url: string; description: string; score: number; timestamp: string }[]): string {
   return `## Real-Time Trending Data (collected ${new Date().toISOString()})\n\n` +
@@ -14,6 +14,10 @@ export function formatGroundingData(items: { source: string; title: string; url:
 }
 
 export function buildDiscoveryPrompt(context: NicheContext, hasWebSearch: boolean): string {
+  const focusSection = context.focus_query?.trim()
+    ? `\n## Manual Focus\nThe user explicitly wants discovery centered on: "${context.focus_query.trim()}".\nPrioritize timely subtopics, launches, debates, and high-signal conversations tied to this phrase.\n`
+    : '';
+
   const searchInstruction = hasWebSearch
     ? `Use your web search capability to find what's trending in ${context.niche} RIGHT NOW.
        Search for: recent news (last 48 hours), tool/product launches, industry debates,
@@ -41,6 +45,7 @@ ${context.competitors.map((c) => `- @${c.handle} (${c.platform})`).join('\n') ||
 
 ## Topics Already Posted Recently (DO NOT repeat these)
 ${context.recent_topics.map((t) => `- ${t}`).join('\n') || 'None yet'}
+${focusSection}
 ${groundingSection}
 
 ## Your Task

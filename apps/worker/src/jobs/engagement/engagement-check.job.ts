@@ -39,6 +39,9 @@ async function processEngagementCheck(job: Job<EngagementCheckJobData>) {
         eq(platformConnections.userId, userId),
         eq(platformConnections.platform, platform),
       ),
+      columns: {
+        accessTokenEnc: true,
+      },
     })
     if (!conn) throw new Error(`No ${platform} connection for user ${userId}`)
     accessToken = decrypt(conn.accessTokenEnc)

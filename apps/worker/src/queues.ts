@@ -59,11 +59,13 @@ export interface DiscoveryLLMJobData {
   provider: string;
   model: string;
   discoveryRunId: string;
+  focusQuery?: string;
 }
 
 export interface DiscoveryMergeJobData {
   userId: string;
   discoveryRunId: string;
+  slotsTotal?: number;
 }
 
 // Phase 6: Sub-Agent Scoring Pipeline

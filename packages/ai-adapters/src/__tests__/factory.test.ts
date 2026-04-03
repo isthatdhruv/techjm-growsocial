@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { AdapterFactory } from '../factory';
-import { OpenAIAdapter } from '../providers/openai';
-import { AnthropicAdapter } from '../providers/anthropic';
-import { GoogleAdapter } from '../providers/google';
-import { XAIAdapter } from '../providers/xai';
-import { DeepSeekAdapter } from '../providers/deepseek';
-import { MistralAdapter } from '../providers/mistral';
-import { ReplicateAdapter } from '../providers/replicate';
+import { AdapterFactory } from '../factory.js';
+import { OpenAIAdapter } from '../providers/openai.js';
+import { AnthropicAdapter } from '../providers/anthropic.js';
+import { GoogleAdapter } from '../providers/google.js';
+import { XAIAdapter } from '../providers/xai.js';
+import { DeepSeekAdapter } from '../providers/deepseek.js';
+import { MistralAdapter } from '../providers/mistral.js';
+import { ReplicateAdapter } from '../providers/replicate.js';
 
 describe('AdapterFactory', () => {
   describe('getAdapter', () => {
@@ -111,7 +111,7 @@ describe('AdapterFactory', () => {
     it('returns anthropic sonnet for caption when available', () => {
       const result = AdapterFactory.getCheapestModel(
         [
-          { provider: 'anthropic', models: ['claude-sonnet-4-6-20250514'] },
+          { provider: 'anthropic', models: ['claude-3-5-sonnet-20241022'] },
           { provider: 'openai', models: ['gpt-5.4-mini'] },
         ],
         'caption',
@@ -123,7 +123,7 @@ describe('AdapterFactory', () => {
       const result = AdapterFactory.getCheapestModel(
         [
           { provider: 'openai', models: ['gpt-5.4-mini'] },
-          { provider: 'anthropic', models: ['claude-sonnet-4-6-20250514'] },
+          { provider: 'anthropic', models: ['claude-3-5-sonnet-20241022'] },
         ],
         'discovery',
       );

@@ -1,4 +1,4 @@
-import type { DiscoveredTopic, SubAgentType, NicheContext } from '../types';
+import type { DiscoveredTopic, SubAgentType, NicheContext } from '../types.js';
 
 export function buildSubAgentPrompt(
   agentType: SubAgentType,

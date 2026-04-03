@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, text, boolean, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
-import { users } from './auth';
-import { errorCategoryEnum } from './_enums';
+import { users } from './auth.js';
+import { errorCategoryEnum } from './_enums.js';
 
 export { errorCategoryEnum };
 

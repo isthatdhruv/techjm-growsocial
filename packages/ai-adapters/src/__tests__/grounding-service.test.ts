@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { FallbackGroundingService } from '../fallback/grounding-service';
-import type { GroundingItem } from '../types';
+import { FallbackGroundingService } from '../fallback/grounding-service.js';
+import type { GroundingItem } from '../types.js';
 
 // Mock all scrapers
 vi.mock('../fallback/scrapers/hackernews', () => ({
@@ -19,11 +19,11 @@ vi.mock('../fallback/scrapers/devto', () => ({
   fetchDevTo: vi.fn(),
 }));
 
-import { fetchHackerNews } from '../fallback/scrapers/hackernews';
-import { fetchReddit } from '../fallback/scrapers/reddit';
-import { fetchRss } from '../fallback/scrapers/rss';
-import { fetchProductHunt } from '../fallback/scrapers/producthunt';
-import { fetchDevTo } from '../fallback/scrapers/devto';
+import { fetchHackerNews } from '../fallback/scrapers/hackernews.js';
+import { fetchReddit } from '../fallback/scrapers/reddit.js';
+import { fetchRss } from '../fallback/scrapers/rss.js';
+import { fetchProductHunt } from '../fallback/scrapers/producthunt.js';
+import { fetchDevTo } from '../fallback/scrapers/devto.js';
 
 const mockHn = fetchHackerNews as ReturnType<typeof vi.fn>;
 const mockReddit = fetchReddit as ReturnType<typeof vi.fn>;

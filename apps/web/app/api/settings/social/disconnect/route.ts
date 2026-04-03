@@ -1,22 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getAuthenticatedUser } from '@/lib/auth-helpers'
-import { db, platformConnections } from '@techjm/db'
-import { eq, and } from 'drizzle-orm'
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@/lib/auth-helpers';
+import { disconnectPlatformConnection } from '@/lib/social-connections';
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await getAuthenticatedUser(request);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { platform } = await request.json()
+  const { platform } = await request.json();
   if (!platform || !['linkedin', 'x'].includes(platform)) {
-    return NextResponse.json({ error: 'Invalid platform' }, { status: 400 })
+    return NextResponse.json({ error: 'Invalid platform' }, { status: 400 });
   }
 
-  await db.delete(platformConnections)
-    .where(and(
-      eq(platformConnections.userId, user.id),
-      eq(platformConnections.platform, platform),
-    ))
+  await disconnectPlatformConnection(user.id, platform);
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true });
 }

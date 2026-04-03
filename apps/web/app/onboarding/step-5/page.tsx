@@ -22,6 +22,8 @@ interface AIKeyInfo {
     image_gen: boolean;
     models: string[];
   };
+  status?: 'available' | 'unavailable';
+  source?: 'user' | 'env';
 }
 
 interface ModelConfig {
@@ -47,6 +49,8 @@ const providerLabels: Record<string, string> = {
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
   replicate: 'Replicate',
+  groq: 'Groq',
+  openai_compatible: 'OpenAI-Compatible',
 };
 
 const toneLabels: Record<string, string> = {
@@ -58,11 +62,12 @@ const toneLabels: Record<string, string> = {
 };
 
 export default function Step5Review() {
-  const { user, loading } = useAuth();
+  const { user, loading, setOnboardingStep } = useAuth();
   const router = useRouter();
 
   const [niche, setNiche] = useState<NicheProfile | null>(null);
   const [aiKeys, setAiKeys] = useState<AIKeyInfo[]>([]);
+  const [availableAiProviders, setAvailableAiProviders] = useState<AIKeyInfo[]>([]);
   const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
   const [socials, setSocials] = useState<SocialConnection[]>([]);
   const [launching, setLaunching] = useState(false);
@@ -91,6 +96,11 @@ export default function Step5Review() {
           const d = await keysRes.json();
           setAiKeys(d.keys || []);
           setModelConfig(d.modelConfig || null);
+          setAvailableAiProviders(
+            ((d.resolvedProviders || []) as AIKeyInfo[]).filter(
+              (provider) => provider.status === 'available',
+            ),
+          );
         }
         if (socialsRes.ok) {
           const d = await socialsRes.json();
@@ -118,7 +128,9 @@ export default function Step5Review() {
         throw new Error(data.error || 'Launch failed');
       }
 
-      router.push('/dashboard?welcome=true');
+      setOnboardingStep('complete');
+      router.replace('/dashboard?welcome=true');
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Launch failed');
     } finally {
@@ -146,6 +158,8 @@ export default function Step5Review() {
     }
     return Object.entries(map).map(([provider, roles]) => ({ provider, roles }));
   }
+
+  const launchReady = Boolean(niche) && availableAiProviders.length > 0;
 
   if (loading || !user || dataLoading) {
     return (
@@ -228,9 +242,9 @@ export default function Step5Review() {
             Edit
           </button>
         </div>
-        {aiKeys.length > 0 ? (
+        {availableAiProviders.length > 0 ? (
           <div className="space-y-3">
-            {aiKeys.map((k) => {
+            {availableAiProviders.map((k) => {
               const assignments = getSlotAssignments().find(
                 (a) => a.provider === k.provider,
               );
@@ -239,6 +253,9 @@ export default function Step5Review() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-white">
                       {providerLabels[k.provider] || k.provider}
+                    </span>
+                    <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-text-muted">
+                      {k.source === 'env' ? 'Env key' : 'User key'}
                     </span>
                     <div className="flex gap-1">
                       {k.capabilities.web_search && (
@@ -330,7 +347,7 @@ export default function Step5Review() {
       <div className="flex flex-col items-center gap-4 pt-4">
         <button
           onClick={handleLaunch}
-          disabled={launching || !niche || aiKeys.length === 0}
+          disabled={launching || !launchReady}
           className="rounded-2xl bg-accent px-12 py-4 text-lg font-bold text-white shadow-lg transition-all hover:bg-accent-hover hover:shadow-xl glow-accent disabled:cursor-not-allowed disabled:opacity-40"
         >
           {launching ? (
@@ -350,6 +367,12 @@ export default function Step5Review() {
           Back to Step 4
         </button>
       </div>
+
+      {!launchReady && (
+        <div className="rounded-lg bg-error/10 px-4 py-2.5 text-center text-sm text-error">
+          Add or configure at least one AI provider before launching.
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg bg-error/10 px-4 py-2.5 text-center text-sm text-error">

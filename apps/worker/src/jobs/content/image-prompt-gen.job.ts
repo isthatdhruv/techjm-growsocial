@@ -1,7 +1,6 @@
 import { Worker, Job } from 'bullmq';
-import { db, userNicheProfiles, userModelConfig, userAiKeys, posts } from '@techjm/db';
-import { decryptApiKey } from '@techjm/db';
-import { eq, and } from 'drizzle-orm';
+import { db, userNicheProfiles, userModelConfig, posts, getActiveApiKey, selectImageModel, selectTextModel } from '@techjm/db';
+import { eq } from 'drizzle-orm';
 import { AdapterFactory } from '@techjm/ai-adapters';
 import type { AIProvider } from '@techjm/ai-adapters';
 import { connection } from '../../redis.js';
@@ -41,15 +40,24 @@ async function processImagePromptGen(job: Job<ImagePromptGenJobData>) {
   }
 
   // 3. Get API key
-  const keyRecord = await db.query.userAiKeys.findFirst({
-    where: and(eq(userAiKeys.userId, userId), eq(userAiKeys.provider, provider as any)),
-  });
-  if (!keyRecord) throw new Error(`No key for ${provider}`);
-  const apiKey = decryptApiKey(keyRecord.apiKeyEnc);
+  const activeProvider = await getActiveApiKey(userId, provider as any);
+  const resolvedPromptProvider = activeProvider.provider as AIProvider;
+  const resolvedPromptModel = selectTextModel(
+    activeProvider.provider as any,
+    activeProvider.models,
+    model,
+  );
 
   // 4. Generate image prompt
-  const adapter = AdapterFactory.getAdapter(provider as AIProvider);
-  const result = await adapter.generateImagePrompt(apiKey, model, captionText, brandKit);
+  const adapter = AdapterFactory.getAdapter(resolvedPromptProvider, {
+    baseUrl: activeProvider.baseUrl,
+  });
+  const result = await adapter.generateImagePrompt(
+    activeProvider.apiKey,
+    resolvedPromptModel,
+    captionText,
+    brandKit,
+  );
 
   job.log(`Image prompt: "${result.prompt.slice(0, 100)}..."`);
 
@@ -75,12 +83,12 @@ async function processImagePromptGen(job: Job<ImagePromptGenJobData>) {
     }
   }
 
-  // Verify user has key for image provider
+  // Verify we have any usable key for the image provider
   if (imageProvider) {
-    const imageKeyRecord = await db.query.userAiKeys.findFirst({
-      where: and(eq(userAiKeys.userId, userId), eq(userAiKeys.provider, imageProvider as any)),
-    });
-    if (!imageKeyRecord) {
+    try {
+      const activeImageProvider = await getActiveApiKey(userId, imageProvider as any);
+      imageModel = selectImageModel(activeImageProvider.provider as any, activeImageProvider.models, imageModel);
+    } catch {
       imageProvider = undefined;
       imageModel = undefined;
     }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helpers';
 import { db, scoredTopics, rawTopics } from '@techjm/db';
-import { eq, and, desc, asc, ilike, sql } from 'drizzle-orm';
+import { eq, and, desc, ilike, or, sql, inArray } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
@@ -19,7 +19,11 @@ export async function GET(request: NextRequest) {
   // Build conditions
   const conditions = [eq(scoredTopics.userId, user.id)];
   if (status !== 'all') {
-    conditions.push(eq(scoredTopics.status, status));
+    if (status === 'pending') {
+      conditions.push(inArray(scoredTopics.status, ['pending', 'scoring']));
+    } else {
+      conditions.push(eq(scoredTopics.status, status));
+    }
   }
 
   // Build sort
@@ -81,7 +85,14 @@ export async function GET(request: NextRequest) {
     .innerJoin(rawTopics, eq(scoredTopics.rawTopicId, rawTopics.id))
     .where(
       search
-        ? and(...conditions, ilike(rawTopics.title, `%${search}%`))
+        ? and(
+            ...conditions,
+            or(
+              ilike(rawTopics.title, `%${search}%`),
+              ilike(rawTopics.angle, `%${search}%`),
+              ilike(rawTopics.reasoning, `%${search}%`),
+            ),
+          )
         : and(...conditions),
     )
     .orderBy(orderBy)
@@ -95,7 +106,14 @@ export async function GET(request: NextRequest) {
     .innerJoin(rawTopics, eq(scoredTopics.rawTopicId, rawTopics.id))
     .where(
       search
-        ? and(...conditions, ilike(rawTopics.title, `%${search}%`))
+        ? and(
+            ...conditions,
+            or(
+              ilike(rawTopics.title, `%${search}%`),
+              ilike(rawTopics.angle, `%${search}%`),
+              ilike(rawTopics.reasoning, `%${search}%`),
+            ),
+          )
         : and(...conditions),
     );
 

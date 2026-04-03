@@ -14,7 +14,6 @@ export default function Step1Signup() {
   const [isSignIn, setIsSignIn] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Auto-advance if already signed in
   useEffect(() => {
     if (!loading && user) {
       router.replace('/onboarding/step-2');
@@ -68,12 +67,16 @@ export default function Step1Signup() {
     }
   }
 
-  if (loading || user) {
+  if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
       </div>
     );
+  }
+
+  if (user) {
+    return null;
   }
 
   return (

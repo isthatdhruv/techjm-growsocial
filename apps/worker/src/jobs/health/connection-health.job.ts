@@ -15,6 +15,10 @@ async function processConnectionHealth(job: Job) {
   let expiredCount = 0
 
   for (const conn of allConnections) {
+    if (!conn.isActive) {
+      continue
+    }
+
     try {
       const accessToken = decrypt(conn.accessTokenEnc)
 

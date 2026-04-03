@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helpers';
 import { withRateLimit } from '@/lib/rate-limit';
-import { db, posts } from '@techjm/db';
+import { db, posts, platformConnections } from '@techjm/db';
 import { eq, and } from 'drizzle-orm';
 import { publishQueue, PublishJobData } from '@/lib/queue-client';
+import { getPublishConnectionError } from '@/lib/social-publish';
 
 export async function POST(
   request: NextRequest,
@@ -27,6 +28,27 @@ export async function POST(
     return NextResponse.json({ error: 'Post not found' }, { status: 404 });
   }
 
+  const connection = await db.query.platformConnections.findFirst({
+    where: and(
+      eq(platformConnections.userId, user.id),
+      eq(platformConnections.platform, post.platform as 'linkedin' | 'x'),
+    ),
+    columns: {
+      connectionHealth: true,
+    },
+  });
+
+  const publishConnectionError = getPublishConnectionError(
+    connection,
+    post.platform as 'linkedin' | 'x',
+  );
+  if (publishConnectionError) {
+    return NextResponse.json(
+      { error: publishConnectionError },
+      { status: 400 },
+    );
+  }
+
   await publishQueue.add(
     `publish-now-${id}`,
     {
@@ -42,11 +64,6 @@ export async function POST(
       removeOnComplete: { count: 500 },
     },
   );
-
-  await db
-    .update(posts)
-    .set({ status: 'publishing', updatedAt: new Date() })
-    .where(eq(posts.id, id));
 
   return NextResponse.json({ success: true, message: 'Publishing now...' });
 }

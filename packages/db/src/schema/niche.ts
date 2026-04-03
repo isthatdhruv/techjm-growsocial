@@ -1,5 +1,5 @@
 import { pgTable, uuid, varchar, text, jsonb, timestamp } from 'drizzle-orm/pg-core';
-import { users } from './auth';
+import { users } from './auth.js';
 
 export const userNicheProfiles = pgTable('user_niche_profiles', {
   id: uuid('id').primaryKey().defaultRandom(),

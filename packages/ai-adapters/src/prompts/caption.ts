@@ -1,4 +1,4 @@
-import type { CaptionRequest } from '../types';
+import type { CaptionRequest } from '../types.js';
 
 export function buildCaptionPrompt(request: CaptionRequest): string {
   const platformGuidance =
@@ -8,9 +8,10 @@ export function buildCaptionPrompt(request: CaptionRequest): string {
       : `Write a tweet/X post (max 240 characters for the main text). Be punchy and concise.
          Use conversational language. Thread-worthy — make people want to engage.`;
 
-  return `You are an expert ${request.platform === 'linkedin' ? 'LinkedIn' : 'X/Twitter'} copywriter.
+  return `You are an expert ${request.platform === 'linkedin' ? 'LinkedIn' : 'X/Twitter'} copywriter for ${request.niche}.
 
 ## Topic
+Niche: ${request.niche}
 Title: ${request.topic_title}
 Angle: ${request.topic_angle}
 

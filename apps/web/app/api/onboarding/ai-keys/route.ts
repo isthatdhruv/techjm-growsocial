@@ -4,10 +4,21 @@ import { db, users, userAiKeys, userModelConfig } from '@techjm/db';
 import { encryptApiKey } from '@techjm/db/encryption';
 import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
+import { getResolvedProviderKeys } from '@/lib/ai-key-resolver';
 
 export const dynamic = 'force-dynamic';
 
-const validProviders = ['openai', 'anthropic', 'google', 'xai', 'deepseek', 'mistral', 'replicate'] as const;
+const validProviders = [
+  'openai',
+  'anthropic',
+  'google',
+  'xai',
+  'deepseek',
+  'mistral',
+  'replicate',
+  'groq',
+  'openai_compatible',
+] as const;
 
 const slotConfigSchema = z
   .object({ provider: z.string(), model: z.string() })
@@ -19,6 +30,7 @@ const bodySchema = z.object({
     z.object({
       provider: z.enum(validProviders),
       apiKey: z.string().min(1),
+      baseUrl: z.string().url().optional(),
       capabilities: z.object({
         web_search: z.boolean(),
         x_search: z.boolean(),
@@ -59,6 +71,13 @@ export async function POST(request: NextRequest) {
     // Upsert each provider key
     for (const key of keys) {
       const encrypted = encryptApiKey(key.apiKey);
+      const serializedCapabilities = {
+        web_search: key.capabilities.web_search,
+        x_search: key.capabilities.x_search,
+        image_gen: key.capabilities.image_gen,
+        models: key.capabilities.models,
+        ...(key.baseUrl ? { baseUrl: key.baseUrl } : {}),
+      };
 
       const existing = await db
         .select()
@@ -71,12 +90,7 @@ export async function POST(request: NextRequest) {
           .update(userAiKeys)
           .set({
             apiKeyEnc: encrypted,
-            capabilities: {
-              web_search: key.capabilities.web_search,
-              x_search: key.capabilities.x_search,
-              image_gen: key.capabilities.image_gen,
-              models: key.capabilities.models,
-            },
+            capabilities: serializedCapabilities,
             validatedAt: new Date(),
           })
           .where(and(eq(userAiKeys.userId, user.id), eq(userAiKeys.provider, key.provider)));
@@ -85,12 +99,7 @@ export async function POST(request: NextRequest) {
           userId: user.id,
           provider: key.provider,
           apiKeyEnc: encrypted,
-          capabilities: {
-            web_search: key.capabilities.web_search,
-            x_search: key.capabilities.x_search,
-            image_gen: key.capabilities.image_gen,
-            models: key.capabilities.models,
-          },
+          capabilities: serializedCapabilities,
           validatedAt: new Date(),
         });
       }
@@ -139,7 +148,10 @@ export async function POST(request: NextRequest) {
         .where(eq(users.id, user.id));
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      resolvedProviders: await getResolvedProviderKeys(user.id),
+    });
   } catch (err) {
     console.error('AI keys save error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -168,7 +180,11 @@ export async function GET(request: NextRequest) {
       .where(eq(userModelConfig.userId, user.id))
       .limit(1);
 
-    return NextResponse.json({ keys, modelConfig: config || null });
+    return NextResponse.json({
+      keys,
+      modelConfig: config || null,
+      resolvedProviders: await getResolvedProviderKeys(user.id),
+    });
   } catch (err) {
     console.error('AI keys fetch error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

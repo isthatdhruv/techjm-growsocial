@@ -1,11 +1,19 @@
 import { Worker, Job } from 'bullmq';
-import { db, scoredTopics, rawTopics, userNicheProfiles, userModelConfig, userAiKeys, posts } from '@techjm/db';
-import { decryptApiKey } from '@techjm/db';
-import { eq, and } from 'drizzle-orm';
-import { AdapterFactory } from '@techjm/ai-adapters';
-import type { AIProvider, CaptionRequest } from '@techjm/ai-adapters';
+import {
+  db,
+  scoredTopics,
+  rawTopics,
+  userNicheProfiles,
+  userModelConfig,
+  posts,
+  getActiveApiKey,
+  selectTextModel,
+} from '@techjm/db';
+import { eq } from 'drizzle-orm';
+import { generateContent } from '@techjm/ai-adapters';
+import type { AIProvider } from '@techjm/ai-adapters';
 import { connection } from '../../redis.js';
-import { imagePromptGenQueue, type CaptionGenJobData, type ImagePromptGenJobData } from '../../queues.js';
+import { QUEUE_NAMES, imagePromptGenQueue, type CaptionGenJobData, type ImagePromptGenJobData } from '../../queues.js';
 import { withErrorHandling } from '../../lib/error-handler.js';
 import { getAutoSelectedModel } from '../sub-agents/model-selector.js';
 
@@ -40,24 +48,34 @@ async function processCaptionGen(job: Job<CaptionGenJobData>) {
   }
 
   // 3. Get API key for caption provider
-  let keyRecord = await db.query.userAiKeys.findFirst({
-    where: and(eq(userAiKeys.userId, userId), eq(userAiKeys.provider, captionProvider as any)),
-  });
-
-  if (!keyRecord) {
-    // Fallback: auto-select any available provider
+  let activeProvider;
+  try {
+    activeProvider = await getActiveApiKey(userId, captionProvider as any);
+    captionModel = selectTextModel(
+      activeProvider.provider as any,
+      activeProvider.models,
+      captionModel,
+    );
+  } catch {
     const auto = await getAutoSelectedModel(userId, 'caption');
     if (!auto) throw new Error('No AI keys available');
     captionProvider = auto.provider;
     captionModel = auto.model;
-    keyRecord = await db.query.userAiKeys.findFirst({
-      where: and(eq(userAiKeys.userId, userId), eq(userAiKeys.provider, captionProvider as any)),
-    });
-    if (!keyRecord) throw new Error('No AI keys available');
+    activeProvider = await getActiveApiKey(userId, captionProvider as any);
+    captionModel = selectTextModel(
+      activeProvider.provider as any,
+      activeProvider.models,
+      captionModel,
+    );
     job.log(`Caption model fallback: using ${captionProvider}/${captionModel}`);
   }
 
-  const apiKey = decryptApiKey(keyRecord.apiKeyEnc);
+  const resolvedCaptionProvider = activeProvider.provider as AIProvider;
+  const resolvedCaptionModel = selectTextModel(
+    activeProvider.provider as any,
+    activeProvider.models,
+    captionModel,
+  );
 
   // 4. Extract sub-agent outputs for prompt injection
   const subAgentOutputs = (scored.subAgentOutputs as Record<string, any>) || {};
@@ -71,30 +89,35 @@ async function processCaptionGen(job: Job<CaptionGenJobData>) {
   const learnedPatterns = brandKit.learned_patterns || null;
 
   // 6. Generate caption for each platform
-  const adapter = AdapterFactory.getAdapter(captionProvider as AIProvider);
   const createdPostIds: { linkedin?: string; x?: string } = {};
 
   for (const platform of platforms) {
-    const request: CaptionRequest = {
-      topic_title: topic.title,
-      topic_angle: topic.angle || '',
+    job.log(`Generating ${platform} caption with ${resolvedCaptionProvider}/${resolvedCaptionModel}`);
+    const result = await generateContent({
+      apiKey: activeProvider.apiKey,
+      provider: resolvedCaptionProvider,
+      model: resolvedCaptionModel,
+      niche: niche.niche,
+      topic: {
+        title: topic.title,
+        angle: topic.angle || '',
+      },
       platform,
-      seo_keywords: (seoData.keywords as string[]) || (scored.seoKeywords as string[]) || [],
-      seo_hashtags:
+      seoKeywords: (seoData.keywords as string[]) || (scored.seoKeywords as string[]) || [],
+      seoHashtags:
         platform === 'linkedin'
           ? (seoData.hashtags_linkedin as string[]) || (scored.seoHashtags as string[]) || []
           : (seoData.hashtags_x as string[]) || (scored.seoHashtags as string[]) || [],
-      audience_personas: (audienceData.persona_match as string[]) || (scored.audiencePersonas as string[]) || [],
-      cta_service: (cmfData.linked_service as string) || scored.cmfLinkedService || undefined,
-      competitor_angle: (gapData.differentiation_angle as string) || scored.competitorDiffAngle || undefined,
+      audiencePersonas:
+        (audienceData.persona_match as string[]) || (scored.audiencePersonas as string[]) || [],
+      ctaService: (cmfData.linked_service as string) || scored.cmfLinkedService || undefined,
+      competitorAngle:
+        (gapData.differentiation_angle as string) || scored.competitorDiffAngle || undefined,
       tone: niche.tone,
-      example_posts: (niche.examplePosts as string[]) || [],
-      learned_patterns: learnedPatterns,
-    };
-
-    job.log(`Generating ${platform} caption with ${captionProvider}/${captionModel}`);
-
-    const result = await adapter.generateCaption(apiKey, captionModel, request);
+      examplePosts: (niche.examplePosts as string[]) || [],
+      learnedPatterns,
+      baseUrl: activeProvider.baseUrl ?? undefined,
+    });
 
     // 7. Save to posts table
     const [post] = await db
@@ -148,6 +171,3 @@ export const captionGenWorker = new Worker(QUEUE_NAMES.CAPTION_GEN, withErrorHan
 captionGenWorker.on('failed', (job, err) => {
   console.error(`[caption-gen] Job ${job?.id} failed:`, err.message);
 });
-
-// Need to import QUEUE_NAMES for the worker registration
-import { QUEUE_NAMES } from '../../queues.js';

@@ -1,6 +1,86 @@
+import https from 'node:https';
+import type { IncomingHttpHeaders } from 'node:http';
+
 interface DirectPublishResult {
   externalId: string;
   url?: string;
+}
+
+const LINKEDIN_API_VERSION = process.env.LINKEDIN_API_VERSION || '202506';
+
+async function sendHttpsRequest(
+  input: string,
+  options: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string | Uint8Array;
+    timeoutMs?: number;
+  } = {},
+): Promise<{
+  status: number;
+  headers: IncomingHttpHeaders;
+  body: Buffer;
+}> {
+  return await new Promise((resolve, reject) => {
+    const url = new URL(input);
+    const req = https.request(
+      url,
+      {
+        method: options.method || 'GET',
+        headers: options.headers,
+        family: 4,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+        res.on('end', () => {
+          resolve({
+            status: res.statusCode ?? 500,
+            headers: res.headers,
+            body: Buffer.concat(chunks),
+          });
+        });
+      },
+    );
+
+    req.setTimeout(options.timeoutMs ?? 30_000, () => {
+      req.destroy(new Error('Request timed out'));
+    });
+    req.on('error', reject);
+
+    if (options.body) {
+      req.write(options.body);
+    }
+
+    req.end();
+  });
+}
+
+async function getImageBuffer(imageSource: string): Promise<Buffer> {
+  if (imageSource.startsWith('data:')) {
+    const [, base64Payload = ''] = imageSource.split(',', 2);
+    if (!base64Payload) {
+      throw new Error('Image data URI is missing payload');
+    }
+    return Buffer.from(base64Payload, 'base64');
+  }
+
+  if (/^https?:\/\//i.test(imageSource)) {
+    const imageResponse = await fetch(imageSource);
+    if (!imageResponse.ok) {
+      throw new Error(`Image download failed: ${imageResponse.status}`);
+    }
+    return Buffer.from(await imageResponse.arrayBuffer());
+  }
+
+  // Some posts currently persist the raw base64 payload instead of a URL.
+  if (/^[A-Za-z0-9+/=\r\n]+$/.test(imageSource)) {
+    return Buffer.from(imageSource, 'base64');
+  }
+
+  throw new Error('Unsupported image source format');
 }
 
 export async function publishDirect(
@@ -8,9 +88,10 @@ export async function publishDirect(
   platform: 'linkedin' | 'x',
   accessToken: string,
   orgUrn?: string | null,
+  accountId?: string | null,
 ): Promise<DirectPublishResult> {
   if (platform === 'linkedin') {
-    return publishToLinkedIn(post, accessToken, orgUrn);
+    return publishToLinkedIn(post, accessToken, orgUrn, accountId);
   } else if (platform === 'x') {
     return publishToX(post, accessToken);
   }
@@ -19,59 +100,72 @@ export async function publishDirect(
 
 // ═══ LinkedIn Direct Publishing ═══
 
-async function publishToLinkedIn(
-  post: { caption: string; imageUrl: string | null },
+export async function publishToLinkedIn(
+  postContent: { caption: string; imageUrl?: string | null },
   accessToken: string,
   orgUrn?: string | null,
+  accountId?: string | null,
 ): Promise<DirectPublishResult> {
-  const authorUrn = orgUrn || (await getLinkedInPersonUrn(accessToken));
+  const authorUrn = resolveLinkedInAuthorUrn(orgUrn, accountId) || (await getLinkedInPersonUrn(accessToken));
 
   let imageAsset: string | null = null;
 
   // Step 1: Upload image if present
-  if (post.imageUrl) {
-    // 1a. Initialize upload
-    const initResponse = await fetch(
-      'https://api.linkedin.com/rest/images?action=initializeUpload',
-      {
-        method: 'POST',
+  if (postContent.imageUrl) {
+    try {
+      // 1a. Initialize upload
+      const initPayload = JSON.stringify({
+        initializeUploadRequest: { owner: authorUrn },
+      });
+      const initResponse = await sendHttpsRequest(
+        'https://api.linkedin.com/rest/images?action=initializeUpload',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'LinkedIn-Version': LINKEDIN_API_VERSION,
+            'X-Restli-Protocol-Version': '2.0.0',
+          },
+          body: initPayload,
+        },
+      );
+
+      if (initResponse.status < 200 || initResponse.status >= 300) {
+        throw new Error(
+          `LinkedIn image init failed: ${initResponse.status} ${initResponse.body.toString('utf8')}`,
+        );
+      }
+
+      const initData = JSON.parse(initResponse.body.toString('utf8')) as {
+        value: { uploadUrl: string; image: string };
+      };
+      const uploadUrl = initData.value.uploadUrl;
+      imageAsset = initData.value.image;
+
+      // 1b. Resolve the image from URL, data URI, or raw base64
+      const imageBuffer = await getImageBuffer(postContent.imageUrl);
+
+      // 1c. Upload binary to LinkedIn
+      const uploadResponse = await sendHttpsRequest(uploadUrl, {
+        method: 'PUT',
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'LinkedIn-Version': '202401',
-          'X-Restli-Protocol-Version': '2.0.0',
+          'Content-Type': 'application/octet-stream',
         },
-        body: JSON.stringify({
-          initializeUploadRequest: { owner: authorUrn },
-        }),
-      },
-    );
+        body: new Uint8Array(imageBuffer),
+      });
 
-    if (!initResponse.ok) {
-      const err = await initResponse.text();
-      throw new Error(`LinkedIn image init failed: ${initResponse.status} ${err}`);
-    }
-
-    const initData = await initResponse.json();
-    const uploadUrl = initData.value.uploadUrl;
-    imageAsset = initData.value.image;
-
-    // 1b. Download image from our CDN
-    const imageResponse = await fetch(post.imageUrl);
-    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-
-    // 1c. Upload binary to LinkedIn
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/octet-stream',
-      },
-      body: imageBuffer,
-    });
-
-    if (!uploadResponse.ok) {
-      console.warn('LinkedIn image upload failed — posting text-only');
+      if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
+        console.warn('LinkedIn image upload failed — posting text-only');
+        imageAsset = null;
+      }
+    } catch (err) {
+      console.warn(
+        `LinkedIn image preparation/upload failed — posting text-only: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       imageAsset = null;
     }
   }
@@ -79,7 +173,7 @@ async function publishToLinkedIn(
   // Step 2: Create post
   const postBody: Record<string, unknown> = {
     author: authorUrn,
-    commentary: post.caption,
+    commentary: postContent.caption,
     visibility: 'PUBLIC',
     distribution: {
       feedDistribution: 'MAIN_FEED',
@@ -99,23 +193,26 @@ async function publishToLinkedIn(
     };
   }
 
-  const postResponse = await fetch('https://api.linkedin.com/rest/posts', {
+  const responseBody = JSON.stringify(postBody);
+  const postResponse = await sendHttpsRequest('https://api.linkedin.com/rest/posts', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
-      'LinkedIn-Version': '202401',
+      'LinkedIn-Version': LINKEDIN_API_VERSION,
       'X-Restli-Protocol-Version': '2.0.0',
     },
-    body: JSON.stringify(postBody),
+    body: responseBody,
   });
 
-  if (!postResponse.ok) {
-    const err = await postResponse.text();
-    throw new Error(`LinkedIn post failed: ${postResponse.status} ${err}`);
+  if (postResponse.status < 200 || postResponse.status >= 300) {
+    throw new Error(
+      `LinkedIn post failed: ${postResponse.status} ${postResponse.body.toString('utf8')}`,
+    );
   }
 
-  const postId = postResponse.headers.get('x-restli-id') || 'unknown';
+  const postIdHeader = postResponse.headers['x-restli-id'];
+  const postId = Array.isArray(postIdHeader) ? postIdHeader[0] : postIdHeader || 'unknown';
 
   return {
     externalId: postId,
@@ -123,12 +220,35 @@ async function publishToLinkedIn(
   };
 }
 
+function resolveLinkedInAuthorUrn(
+  orgUrn?: string | null,
+  accountId?: string | null,
+): string | null {
+  if (orgUrn) {
+    return orgUrn;
+  }
+
+  if (!accountId) {
+    return null;
+  }
+
+  return accountId.startsWith('urn:') ? accountId : `urn:li:person:${accountId}`;
+}
+
 async function getLinkedInPersonUrn(accessToken: string): Promise<string> {
-  const response = await fetch('https://api.linkedin.com/v2/userinfo', {
+  const response = await sendHttpsRequest('https://api.linkedin.com/v2/userinfo', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!response.ok) throw new Error('Failed to get LinkedIn user info');
-  const data = await response.json();
+
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(
+      `Failed to get LinkedIn user info: ${response.status} ${response.body.toString('utf8')}`,
+    );
+  }
+
+  const data = JSON.parse(response.body.toString('utf8')) as { sub?: string };
+
+  if (!data.sub) throw new Error('Failed to get LinkedIn user info');
   return `urn:li:person:${data.sub}`;
 }
 

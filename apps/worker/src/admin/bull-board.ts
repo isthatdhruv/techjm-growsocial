@@ -6,7 +6,7 @@ import { Queue } from 'bullmq';
 import { connection } from '../redis.js';
 import { QUEUE_NAMES } from '../queues.js';
 
-export function startBullBoard(port: number = 3101) {
+export function startBullBoard(port: number = Number(process.env.BULL_BOARD_PORT || '3101')) {
   const serverAdapter = new ExpressAdapter();
   serverAdapter.setBasePath('/admin/queues');
 
@@ -24,7 +24,19 @@ export function startBullBoard(port: number = 3101) {
 
   const app = express();
   app.use('/admin/queues', serverAdapter.getRouter());
-  app.listen(port, () => {
+
+  const server = app.listen(port, () => {
     console.log(`Bull Board running at http://localhost:${port}/admin/queues`);
+  });
+
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      console.warn(
+        `[bull-board] Port ${port} is already in use. Worker will continue without Bull Board on this process.`,
+      );
+      return;
+    }
+
+    console.error(`[bull-board] Failed to start: ${error.message}`);
   });
 }

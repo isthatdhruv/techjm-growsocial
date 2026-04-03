@@ -10,8 +10,8 @@ import type {
   NicheContext,
   SubAgentResult,
   SubAgentType,
-} from '../types';
-import { mapApiError } from '../utils';
+} from '../types.js';
+import { mapApiError } from '../utils.js';
 
 const TEXT_ONLY_ERROR = 'Replicate is for image generation only. Use a text model provider for discovery.';
 

@@ -1,71 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helpers';
-import { db, scoredTopics, platformConnections } from '@techjm/db';
+import { db, scoredTopics } from '@techjm/db';
 import { eq, and } from 'drizzle-orm';
-import { captionGenQueue } from '@/lib/queue-client';
+import { queueTopicContentGeneration } from '@/lib/content-jobs';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const user = await getAuthenticatedUser(request);
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { id } = await params;
+    console.info(`[topics/approve] start user=${user.id} topic=${id}`);
+
+    // Verify topic belongs to this user
+    const topic = await db.query.scoredTopics.findFirst({
+      where: and(eq(scoredTopics.id, id), eq(scoredTopics.userId, user.id)),
+    });
+
+    if (!topic) {
+      return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+    }
+
+    try {
+      const { platforms, jobId } = await queueTopicContentGeneration(user.id, id);
+
+      return NextResponse.json({
+        success: true,
+        status: 'approved',
+        message: 'Content generation started',
+        platforms,
+        jobId,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Content generation queue failed';
+
+      console.error(
+        `[topics/approve] queue failed user=${user.id} topic=${id}: ${errorMessage}`,
+      );
+
+      await db
+        .update(scoredTopics)
+        .set({ status: 'approved' })
+        .where(eq(scoredTopics.id, id));
+
+      return NextResponse.json({
+        success: true,
+        status: 'approved',
+        message: `Topic approved, but content generation could not be queued: ${errorMessage}`,
+        platforms: [],
+        queueError: errorMessage,
+      });
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    console.error(`[topics/approve] failed: ${errorMessage}`);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
-
-  const { id } = await params;
-
-  // Verify topic belongs to this user
-  const topic = await db.query.scoredTopics.findFirst({
-    where: and(eq(scoredTopics.id, id), eq(scoredTopics.userId, user.id)),
-  });
-
-  if (!topic) {
-    return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
-  }
-
-  // Update status to approved
-  await db
-    .update(scoredTopics)
-    .set({ status: 'approved' })
-    .where(eq(scoredTopics.id, id));
-
-  // Determine which platforms the user has connected
-  const connections = await db.query.platformConnections.findMany({
-    where: and(
-      eq(platformConnections.userId, user.id),
-      eq(platformConnections.connectionHealth, 'healthy'),
-    ),
-  });
-
-  let platforms = connections
-    .map((c) => c.platform)
-    .filter((p): p is 'linkedin' | 'x' => p === 'linkedin' || p === 'x');
-
-  if (platforms.length === 0) {
-    // No connected platforms — generate for both anyway
-    platforms = ['linkedin', 'x'];
-  }
-
-  // Queue caption generation (starts the caption → image-prompt → image pipeline)
-  await captionGenQueue.add(
-    `caption-${id}`,
-    {
-      userId: user.id,
-      scoredTopicId: id,
-      rawTopicId: topic.rawTopicId,
-      platforms,
-    },
-    {
-      attempts: 2,
-      backoff: { type: 'exponential', delay: 15000 },
-    },
-  );
-
-  return NextResponse.json({
-    success: true,
-    status: 'approved',
-    message: 'Content generation started',
-    platforms,
-  });
 }

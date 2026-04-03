@@ -23,7 +23,12 @@ export const envSchema = z.object({
   GOOGLE_API_KEY: z.string().optional(),
   XAI_API_KEY: z.string().optional(),
   DEEPSEEK_API_KEY: z.string().optional(),
+  MISTRAL_API_KEY: z.string().optional(),
   REPLICATE_API_KEY: z.string().optional(),
+  GROQ_API_KEY: z.string().optional(),
+  OPENAI_COMPATIBLE_API_KEY: z.string().optional(),
+  OPENAI_COMPATIBLE_BASE_URL: z.string().url().optional(),
+  OPENAI_COMPATIBLE_DEFAULT_MODEL: z.string().optional(),
 
   // Social OAuth
   LINKEDIN_CLIENT_ID: z.string().optional(),

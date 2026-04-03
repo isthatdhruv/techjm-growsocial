@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildDiscoveryPrompt, buildGrokDiscoveryPrompt, formatGroundingData } from '../prompts/discovery';
-import type { NicheContext, GroundingItem } from '../types';
+import { buildDiscoveryPrompt, buildGrokDiscoveryPrompt, formatGroundingData } from '../prompts/discovery.js';
+import type { NicheContext, GroundingItem } from '../types.js';
 
 const baseContext: NicheContext = {
   niche: 'SaaS / Software',
@@ -76,6 +76,15 @@ describe('buildDiscoveryPrompt', () => {
     expect(prompt).toContain('JSON array');
     expect(prompt).toContain('source_urls');
     expect(prompt).toContain('controversy_level');
+  });
+
+  it('includes manual focus query guidance when provided', () => {
+    const prompt = buildDiscoveryPrompt(
+      { ...baseContext, focus_query: 'career growth' },
+      true,
+    );
+    expect(prompt).toContain('Manual Focus');
+    expect(prompt).toContain('career growth');
   });
 });
 

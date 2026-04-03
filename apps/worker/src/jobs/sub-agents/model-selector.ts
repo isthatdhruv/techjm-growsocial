@@ -1,38 +1,38 @@
-import { db, userAiKeys } from '@techjm/db';
-import { eq } from 'drizzle-orm';
+import { getAvailableAiProviders, selectImageModel, selectTextModel } from '@techjm/db';
 
-// Priority order: cheapest first
-const SUB_AGENT_MODEL_PRIORITY = [
-  { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
-  { provider: 'openai', model: 'gpt-5.4-nano' },
-  { provider: 'google', model: 'gemini-2.5-flash-lite' },
+import type { SupportedAIProvider } from '@techjm/db';
+
+const SUB_AGENT_MODEL_PRIORITY: { provider: SupportedAIProvider; model: string }[] = [
+  { provider: 'anthropic', model: 'claude-3-5-haiku-latest' },
+  { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+  { provider: 'openai', model: 'gpt-4o-mini' },
+  { provider: 'google', model: 'gemini-1.5-flash' },
   { provider: 'deepseek', model: 'deepseek-chat' },
-  { provider: 'mistral', model: 'mistral-medium-latest' },
-  { provider: 'xai', model: 'grok-4.1-fast' },
-  { provider: 'openai', model: 'gpt-5.4-mini' },
+  { provider: 'mistral', model: 'mistral-large-latest' },
+  { provider: 'xai', model: 'grok-2-latest' },
+  { provider: 'openai', model: 'gpt-4o' },
 ];
 
-const CAPTION_MODEL_PRIORITY = [
-  { provider: 'anthropic', model: 'claude-sonnet-4-6-20250514' },
-  { provider: 'openai', model: 'gpt-5.4-mini' },
-  { provider: 'google', model: 'gemini-3.1-pro' },
-  { provider: 'xai', model: 'grok-4.1-fast' },
+const CAPTION_MODEL_PRIORITY: { provider: SupportedAIProvider; model: string }[] = [
+  { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+  { provider: 'anthropic', model: 'claude-3-5-sonnet-latest' },
+  { provider: 'openai', model: 'gpt-4o' },
+  { provider: 'google', model: 'gemini-1.5-pro' },
+  { provider: 'xai', model: 'grok-2-latest' },
 ];
 
-const IMAGE_MODEL_PRIORITY = [
-  { provider: 'replicate', model: 'black-forest-labs/flux-2-pro' },
+const IMAGE_MODEL_PRIORITY: { provider: SupportedAIProvider; model: string }[] = [
+  { provider: 'replicate', model: 'black-forest-labs/flux-1.1-pro' },
   { provider: 'openai', model: 'gpt-image-1' },
+  { provider: 'openai', model: 'dall-e-3' },
 ];
 
 export async function getAutoSelectedModel(
   userId: string,
   task: 'sub_agent' | 'caption' | 'image',
 ): Promise<{ provider: string; model: string } | null> {
-  const keys = await db.query.userAiKeys.findMany({
-    where: eq(userAiKeys.userId, userId),
-    columns: { provider: true },
-  });
-  const connectedProviders = new Set<string>(keys.map((k) => k.provider));
+  const providers = await getAvailableAiProviders(userId);
+  const connectedProviders = new Map(providers.map((provider) => [provider.provider, provider]));
 
   const priority =
     task === 'sub_agent'
@@ -42,9 +42,40 @@ export async function getAutoSelectedModel(
         : CAPTION_MODEL_PRIORITY;
 
   for (const candidate of priority) {
-    if (connectedProviders.has(candidate.provider)) {
-      return candidate;
+    const provider = connectedProviders.get(candidate.provider);
+    if (provider) {
+      if (task === 'image' && !provider.capabilities.image_gen) {
+        continue;
+      }
+
+      const preferredModel = provider.models.find((model) => model === candidate.model);
+      const fallbackModel =
+        task === 'image'
+          ? selectImageModel(candidate.provider, provider.models, preferredModel || candidate.model)
+          : selectTextModel(candidate.provider, provider.models, preferredModel || candidate.model);
+
+      return {
+        provider: candidate.provider,
+        model: preferredModel || fallbackModel || candidate.model,
+      };
     }
+  }
+
+  const firstProvider =
+    task === 'image'
+      ? providers.find((provider) => provider.capabilities.image_gen)
+      : providers[0];
+
+  if (firstProvider) {
+    const fallbackModel =
+      task === 'image'
+        ? selectImageModel(firstProvider.provider, firstProvider.models)
+        : selectTextModel(firstProvider.provider, firstProvider.models);
+
+    return {
+      provider: firstProvider.provider,
+      model: fallbackModel,
+    };
   }
 
   return null;

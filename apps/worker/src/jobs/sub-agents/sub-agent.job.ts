@@ -1,7 +1,14 @@
 import { Worker } from 'bullmq';
 import type { Job } from 'bullmq';
-import { db, rawTopics, scoredTopics, userNicheProfiles, userAiKeys, posts, topicPerformance } from '@techjm/db';
-import { decrypt } from '@techjm/db';
+import {
+  db,
+  rawTopics,
+  scoredTopics,
+  userNicheProfiles,
+  posts,
+  topicPerformance,
+  getActiveApiKey,
+} from '@techjm/db';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { AdapterFactory } from '@techjm/ai-adapters';
 import type { SubAgentType, NicheContext } from '@techjm/ai-adapters';
@@ -37,11 +44,7 @@ async function processSubAgent(job: Job<SubAgentJobData>) {
   if (!nicheProfile) throw new Error(`Niche profile not found for user ${userId}`);
 
   // 3. Load API key
-  const keyRecord = await db.query.userAiKeys.findFirst({
-    where: and(eq(userAiKeys.userId, userId), eq(userAiKeys.provider, provider as any)),
-  });
-  if (!keyRecord) throw new Error(`No API key for ${provider}`);
-  const apiKey = decrypt(keyRecord.apiKeyEnc);
+  const activeProvider = await getActiveApiKey(userId, provider as any);
 
   // 4. Build niche context for adapter
   const nicheContext: NicheContext = {
@@ -87,9 +90,11 @@ async function processSubAgent(job: Job<SubAgentJobData>) {
   }
 
   // 6. Call the adapter's analyzeSubAgent method
-  const adapter = AdapterFactory.getAdapter(provider as any);
+  const adapter = AdapterFactory.getAdapter(provider as any, {
+    baseUrl: activeProvider.baseUrl,
+  });
   const subAgentResult = await adapter.analyzeSubAgent(
-    apiKey,
+    activeProvider.apiKey,
     model,
     topicData,
     agentType as SubAgentType,

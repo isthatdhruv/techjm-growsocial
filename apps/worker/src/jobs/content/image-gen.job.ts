@@ -1,7 +1,6 @@
 import { Worker, Job } from 'bullmq';
-import { db, userAiKeys, posts } from '@techjm/db';
-import { decryptApiKey } from '@techjm/db';
-import { eq, and } from 'drizzle-orm';
+import { db, posts, getActiveApiKey } from '@techjm/db';
+import { eq } from 'drizzle-orm';
 import { AdapterFactory } from '@techjm/ai-adapters';
 import type { AIProvider } from '@techjm/ai-adapters';
 import { v2 as cloudinary } from 'cloudinary';
@@ -18,35 +17,51 @@ if (process.env.CLOUDINARY_CLOUD_NAME) {
   });
 }
 
+function normalizeGeneratedImageUrl(imageUrl: string): string {
+  if (!imageUrl) {
+    throw new Error('Image generation returned an empty image URL');
+  }
+
+  if (imageUrl.startsWith('data:') || /^https?:\/\//i.test(imageUrl)) {
+    return imageUrl;
+  }
+
+  // OpenAI/xAI can return bare base64 payloads instead of a hosted URL.
+  if (/^[A-Za-z0-9+/=\r\n]+$/.test(imageUrl)) {
+    return `data:image/png;base64,${imageUrl.replace(/\s+/g, '')}`;
+  }
+
+  return imageUrl;
+}
+
 async function processImageGen(job: Job<ImageGenJobData>) {
   const { userId, postIds, imagePrompt, imageStyle, provider, model } = job.data;
 
   job.log(`Image gen: provider=${provider}, model=${model}, posts=${postIds.length}`);
 
   // 1. Get API key
-  const keyRecord = await db.query.userAiKeys.findFirst({
-    where: and(eq(userAiKeys.userId, userId), eq(userAiKeys.provider, provider as any)),
-  });
-  if (!keyRecord) throw new Error(`No key for ${provider}`);
-  const apiKey = decryptApiKey(keyRecord.apiKeyEnc);
+  const activeProvider = await getActiveApiKey(userId, provider as any);
 
   // 2. Generate image via adapter
-  const adapter = AdapterFactory.getAdapter(provider as AIProvider);
-  const result = await adapter.generateImage(apiKey, model, imagePrompt, {
+  const adapter = AdapterFactory.getAdapter(provider as AIProvider, {
+    baseUrl: activeProvider.baseUrl,
+  });
+  const result = await adapter.generateImage(activeProvider.apiKey, model, imagePrompt, {
     width: 1024,
     height: 1024,
     style: imageStyle,
   });
+  const normalizedImageUrl = normalizeGeneratedImageUrl(result.image_url);
 
-  job.log(`Image generated: ${result.image_url.slice(0, 80)}...`);
+  job.log(`Image generated: ${normalizedImageUrl.slice(0, 80)}...`);
 
   // 3. Upload to Cloudinary (if configured)
-  let baseUrl = result.image_url;
+  let baseUrl = normalizedImageUrl;
   let cloudinaryPublicId: string | null = null;
 
   if (process.env.CLOUDINARY_CLOUD_NAME) {
     try {
-      const uploadResult = await cloudinary.uploader.upload(result.image_url, {
+      const uploadResult = await cloudinary.uploader.upload(normalizedImageUrl, {
         folder: `techjm/${userId}`,
         public_id: `post-${postIds[0]}-${Date.now()}`,
         resource_type: 'image',

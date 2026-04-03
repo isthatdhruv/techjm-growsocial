@@ -35,6 +35,32 @@ services:
     networks:
       - app-network
 
+  temporal:
+    image: temporalio/server:1.27.2
+    restart: unless-stopped
+    entrypoint: ["temporal"]
+    command: ["server", "start-dev", "--ip", "0.0.0.0"]
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    networks:
+      - app-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "temporal",
+          "operator",
+          "cluster",
+          "health",
+          "--address",
+          "127.0.0.1:7233",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -54,20 +80,35 @@ services:
     restart: unless-stopped
     ports:
       - "5000:5000"
+    volumes:
+      - ./docker/postiz-nginx.conf:/etc/nginx/nginx.conf:ro
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postiz
       REDIS_URL: redis://redis:6379
+      TEMPORAL_ADDRESS: temporal:7233
       NEXT_PUBLIC_BACKEND_URL: http://localhost:5000
+      NEXTAUTH_URL: http://localhost:5000
+      NEXT_PUBLIC_APP_URL: http://localhost:5000
+      NEXTAUTH_SECRET: supersecret123
       JWT_SECRET: change-this-postiz-jwt-secret
+      ENABLE_PUBLIC_API: "true"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      temporal:
+        condition: service_healthy
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:5000/auth',{redirect:'manual'}).then((res)=>process.exit(res.status >= 200 && res.status < 400 ? 0 : 1)).catch(()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3

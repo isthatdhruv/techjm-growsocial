@@ -19,6 +19,7 @@ export interface NicheFormData {
 
 export interface ValidatedProvider {
   provider: string;
+  baseUrl?: string;
   capabilities: {
     web_search: boolean;
     x_search: boolean;

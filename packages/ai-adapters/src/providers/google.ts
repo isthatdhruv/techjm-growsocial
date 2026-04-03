@@ -11,11 +11,11 @@ import type {
   NicheContext,
   SubAgentResult,
   SubAgentType,
-} from '../types';
-import { parseJsonResponse, mapApiError } from '../utils';
-import { buildDiscoveryPrompt } from '../prompts/discovery';
-import { buildSubAgentPrompt } from '../prompts/sub-agent';
-import { buildCaptionPrompt, buildImagePromptPrompt } from '../prompts/caption';
+} from '../types.js';
+import { parseJsonResponse, mapApiError } from '../utils.js';
+import { buildDiscoveryPrompt } from '../prompts/discovery.js';
+import { buildSubAgentPrompt } from '../prompts/sub-agent.js';
+import { buildCaptionPrompt, buildImagePromptPrompt } from '../prompts/caption.js';
 
 export class GoogleAdapter implements AIAdapter {
   provider: AIProvider = 'google';
@@ -24,17 +24,16 @@ export class GoogleAdapter implements AIAdapter {
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
       // Validate the key by making a simple generation call with a known model
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
       const result = await model.generateContent('hi');
       // If we get here, the key is valid
       const responseText = result.response.text();
 
       // Key validated via generateContent. List known models.
       const availableModels = [
-        'gemini-2.0-flash',
-        'gemini-2.5-flash',
-        'gemini-2.5-pro',
-        'gemini-3.1-pro',
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
+        'gemini-2.0-flash-exp',
       ];
       const hasImagen = false; // Imagen requires separate API access
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useOnboardingStore, type CompetitorEntry } from '@/stores/onboarding-store';
@@ -99,6 +99,7 @@ export default function Step2Niche() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [loadedFromDb, setLoadedFromDb] = useState(false);
+  const hasUserEditedRef = useRef(false);
 
   // Load existing niche data from DB
   useEffect(() => {
@@ -111,7 +112,7 @@ export default function Step2Niche() {
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.profile) {
+          if (data.profile && !hasUserEditedRef.current) {
             const p = data.profile;
             setNiche(p.niche);
             setPillars(p.pillars as string[]);
@@ -202,6 +203,7 @@ export default function Step2Niche() {
         <select
           value={niche}
           onChange={(e) => {
+            hasUserEditedRef.current = true;
             setNiche(e.target.value);
             setPillars([]);
           }}
@@ -218,7 +220,10 @@ export default function Step2Niche() {
           <input
             type="text"
             value={customNiche}
-            onChange={(e) => setCustomNiche(e.target.value)}
+            onChange={(e) => {
+              hasUserEditedRef.current = true;
+              setCustomNiche(e.target.value);
+            }}
             placeholder="Describe your niche..."
             className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-text-muted/40 focus:border-accent/40 focus:outline-none"
           />
@@ -235,7 +240,10 @@ export default function Step2Niche() {
           <ChipSelect
             options={pillarOptions}
             selected={pillars}
-            onChange={setPillars}
+            onChange={(next) => {
+              hasUserEditedRef.current = true;
+              setPillars(next);
+            }}
             min={3}
             max={6}
             allowCustom
@@ -253,7 +261,10 @@ export default function Step2Niche() {
           </p>
           <textarea
             value={audience}
-            onChange={(e) => setAudience(e.target.value)}
+            onChange={(e) => {
+              hasUserEditedRef.current = true;
+              setAudience(e.target.value);
+            }}
             placeholder="e.g., CTOs and engineering managers at Series A-C startups"
             rows={3}
             className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-text-muted/40 focus:border-accent/40 focus:outline-none"
@@ -265,6 +276,7 @@ export default function Step2Niche() {
                   key={s}
                   type="button"
                   onClick={() => {
+                    hasUserEditedRef.current = true;
                     const separator = audience.trim() ? ', ' : '';
                     if (!audience.includes(s)) {
                       setAudience(audience.trim() + separator + s);
@@ -290,7 +302,10 @@ export default function Step2Niche() {
               <button
                 key={t.value}
                 type="button"
-                onClick={() => setTone(t.value)}
+                onClick={() => {
+                  hasUserEditedRef.current = true;
+                  setTone(t.value);
+                }}
                 className={`rounded-xl border p-4 text-left transition-all ${
                   tone === t.value
                     ? 'border-accent/40 bg-accent/10'
@@ -325,6 +340,7 @@ export default function Step2Niche() {
                 <select
                   value={comp.platform}
                   onChange={(e) => {
+                    hasUserEditedRef.current = true;
                     const updated = [...competitors];
                     updated[i] = { ...updated[i], platform: e.target.value as 'linkedin' | 'x' };
                     setCompetitors(updated);
@@ -342,6 +358,7 @@ export default function Step2Niche() {
                     type="text"
                     value={comp.handle}
                     onChange={(e) => {
+                      hasUserEditedRef.current = true;
                       const updated = [...competitors];
                       updated[i] = { ...updated[i], handle: e.target.value.replace('@', '') };
                       setCompetitors(updated);
@@ -353,7 +370,10 @@ export default function Step2Niche() {
                 {competitors.length > 1 && (
                   <button
                     type="button"
-                    onClick={() => setCompetitors(competitors.filter((_, idx) => idx !== i))}
+                    onClick={() => {
+                      hasUserEditedRef.current = true;
+                      setCompetitors(competitors.filter((_, idx) => idx !== i));
+                    }}
                     className="px-2 text-text-muted/40 hover:text-error"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -367,9 +387,10 @@ export default function Step2Niche() {
           {competitors.length < 5 && (
             <button
               type="button"
-              onClick={() =>
-                setCompetitors([...competitors, { platform: 'linkedin', handle: '' }])
-              }
+              onClick={() => {
+                hasUserEditedRef.current = true;
+                setCompetitors([...competitors, { platform: 'linkedin', handle: '' }]);
+              }}
               className="mt-2 text-xs text-accent hover:underline"
             >
               + Add another
@@ -387,7 +408,10 @@ export default function Step2Niche() {
           </p>
           <TagInput
             tags={antiTopics}
-            onChange={setAntiTopics}
+            onChange={(next) => {
+              hasUserEditedRef.current = true;
+              setAntiTopics(next);
+            }}
             placeholder="Type a topic and press Enter..."
             suggestions={ANTI_TOPIC_SUGGESTIONS}
           />
@@ -399,7 +423,10 @@ export default function Step2Niche() {
         <GlassCard className="p-6">
           <button
             type="button"
-            onClick={() => setShowExamples(!showExamples)}
+            onClick={() => {
+              hasUserEditedRef.current = true;
+              setShowExamples(!showExamples);
+            }}
             className="flex w-full items-center justify-between text-left"
           >
             <span className="text-sm font-medium text-text-muted">
@@ -425,6 +452,7 @@ export default function Step2Niche() {
                   key={i}
                   value={post}
                   onChange={(e) => {
+                    hasUserEditedRef.current = true;
                     const updated = [...examplePosts];
                     updated[i] = e.target.value;
                     setExamplePosts(updated);

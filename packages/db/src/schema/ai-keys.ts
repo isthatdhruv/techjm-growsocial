@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, text, jsonb, timestamp, unique } from 'drizzle-orm/pg-core';
-import { users } from './auth';
-import { aiProviderEnum } from './_enums';
+import { users } from './auth.js';
+import { aiProviderEnum } from './_enums.js';
 
 export { aiProviderEnum };
 

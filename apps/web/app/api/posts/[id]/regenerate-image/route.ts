@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helpers';
-import { db, posts, userModelConfig, userAiKeys } from '@techjm/db';
+import { db, posts, userModelConfig, getActiveApiKey, selectImageModel } from '@techjm/db';
 import { eq, and } from 'drizzle-orm';
 import { imageGenQueue } from '@/lib/queue-client';
 
@@ -34,22 +34,17 @@ export async function POST(
   });
   const imageConfig = modelCfg?.imageModel as { provider: string; model: string } | null;
   let imageProvider = imageConfig?.provider || 'replicate';
-  let imageModel = imageConfig?.model || 'black-forest-labs/flux-2-pro';
+  let imageModel = imageConfig?.model || 'black-forest-labs/flux-1.1-pro';
 
-  // Verify user has key for this provider
-  const keyRecord = await db.query.userAiKeys.findFirst({
-    where: and(eq(userAiKeys.userId, user.id), eq(userAiKeys.provider, imageProvider as any)),
-  });
-
-  if (!keyRecord) {
-    // Try OpenAI fallback
-    const openaiKey = await db.query.userAiKeys.findFirst({
-      where: and(eq(userAiKeys.userId, user.id), eq(userAiKeys.provider, 'openai')),
-    });
-    if (openaiKey) {
+  try {
+    const activeProvider = await getActiveApiKey(user.id, imageProvider as any);
+    imageModel = selectImageModel(activeProvider.provider as any, activeProvider.models, imageModel);
+  } catch {
+    try {
+      const activeProvider = await getActiveApiKey(user.id, 'openai');
       imageProvider = 'openai';
-      imageModel = 'gpt-image-1';
-    } else {
+      imageModel = selectImageModel('openai', activeProvider.models, 'gpt-image-1');
+    } catch {
       return NextResponse.json({ error: 'No image generation provider available' }, { status: 400 });
     }
   }

@@ -1,10 +1,10 @@
-import { fetchHackerNews } from './scrapers/hackernews';
-import { fetchReddit } from './scrapers/reddit';
-import { fetchRss } from './scrapers/rss';
-import { fetchProductHunt } from './scrapers/producthunt';
-import { fetchDevTo } from './scrapers/devto';
-import { formatGroundingData } from '../prompts/discovery';
-import type { GroundingItem } from '../types';
+import { fetchHackerNews } from './scrapers/hackernews.js';
+import { fetchReddit } from './scrapers/reddit.js';
+import { fetchRss } from './scrapers/rss.js';
+import { fetchProductHunt } from './scrapers/producthunt.js';
+import { fetchDevTo } from './scrapers/devto.js';
+import { formatGroundingData } from '../prompts/discovery.js';
+import type { GroundingItem } from '../types.js';
 
 export class FallbackGroundingService {
   async collect(nicheHint: string): Promise<GroundingItem[]> {

@@ -50,6 +50,15 @@ export default function DashboardPage() {
   const [topicStats, setTopicStats] = useState({ pending: 0, approved: 0, total: 0 });
   const [contentStats, setContentStats] = useState({ review: 0, scheduled: 0 });
   const [queueStats, setQueueStats] = useState({ scheduledToday: 0, publishedThisWeek: 0, failedCount: 0, nextCaption: '' as string | null, nextPlatform: '' as string | null, nextTime: '' as string | null });
+  const [socialSummary, setSocialSummary] = useState<{
+    connected: number;
+    needsAttention: number;
+    configured: { linkedin: boolean; x: boolean };
+  }>({
+    connected: 0,
+    needsAttention: 0,
+    configured: { linkedin: true, x: true },
+  });
 
   useEffect(() => {
     if (isWelcome) setShowWelcome(true);
@@ -116,6 +125,29 @@ export default function DashboardPage() {
           nextCaption: data.nextScheduled?.captionPreview || null,
           nextPlatform: data.nextScheduled?.platform || null,
           nextTime: data.nextScheduled?.scheduledAt || null,
+        });
+      }
+
+      const connectionsRes = await fetch('/api/connections', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (connectionsRes.ok) {
+        const data = await connectionsRes.json();
+        const connections = (data.connections || []) as {
+          connectionHealth?: string | null;
+        }[];
+        const needsAttention = connections.filter(
+          (connection) =>
+            connection.connectionHealth === 'expired' ||
+            connection.connectionHealth === 'degraded',
+        ).length;
+        setSocialSummary({
+          connected: connections.length,
+          needsAttention,
+          configured: {
+            linkedin: data.oauth?.linkedin?.configured ?? true,
+            x: data.oauth?.x?.configured ?? true,
+          },
         });
       }
     } catch {
@@ -222,7 +254,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Section links */}
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Link href="/dashboard/topics">
           <GlassCard hover className="flex items-center justify-between p-6">
             <div>
@@ -272,6 +304,23 @@ export default function DashboardPage() {
               <p className="text-sm font-semibold text-white">Analytics</p>
               <p className="mt-0.5 text-xs text-text-muted">
                 View engagement metrics and insights
+              </p>
+            </div>
+            <span className="text-text-muted/40">{iconMap.arrow}</span>
+          </GlassCard>
+        </Link>
+        <Link href="/settings">
+          <GlassCard hover className="flex items-center justify-between p-6">
+            <div>
+              <p className="text-sm font-semibold text-white">Social Connections</p>
+              <p className="mt-0.5 text-xs text-text-muted">
+                {socialSummary.needsAttention > 0
+                  ? `${socialSummary.needsAttention} need reconnect`
+                  : socialSummary.connected > 0
+                    ? `${socialSummary.connected} connected`
+                    : socialSummary.configured.linkedin || socialSummary.configured.x
+                      ? 'Connect LinkedIn or X'
+                      : 'OAuth not configured'}
               </p>
             </div>
             <span className="text-text-muted/40">{iconMap.arrow}</span>

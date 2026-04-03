@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helpers';
 import { withRateLimit } from '@/lib/rate-limit';
-import { AdapterFactory, type AIProvider } from '@techjm/ai-adapters';
+import { WEB_VALID_PROVIDERS, validateProviderApiKey } from '@/lib/ai-provider';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
-const validProviders = ['openai', 'anthropic', 'google', 'xai', 'deepseek', 'mistral', 'replicate'] as const;
-
 const bodySchema = z.object({
-  provider: z.enum(validProviders),
+  provider: z.enum(WEB_VALID_PROVIDERS),
   apiKey: z.string().min(1),
+  baseUrl: z.string().url().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -32,8 +31,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { provider, apiKey } = parsed.data;
-    const capabilities = await AdapterFactory.validateKey(provider as AIProvider, apiKey);
+    const { provider, apiKey, baseUrl } = parsed.data;
+    const capabilities = await validateProviderApiKey(provider, apiKey, baseUrl);
 
     return NextResponse.json({ capabilities });
   } catch (err) {

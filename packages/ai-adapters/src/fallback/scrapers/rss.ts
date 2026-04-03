@@ -1,6 +1,6 @@
 import Parser from 'rss-parser';
 import type { GroundingItem } from '../../types';
-import { getRssFeeds } from '../niche-mappings';
+import { getRssFeeds } from '../niche-mappings.js';
 
 export async function fetchRss(niche: string): Promise<GroundingItem[]> {
   try {

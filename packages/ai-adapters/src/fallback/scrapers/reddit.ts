@@ -1,5 +1,5 @@
 import type { GroundingItem } from '../../types';
-import { getSubreddits } from '../niche-mappings';
+import { getSubreddits } from '../niche-mappings.js';
 
 interface RedditPost {
   title: string;

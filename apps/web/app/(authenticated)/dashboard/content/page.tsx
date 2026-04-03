@@ -56,6 +56,44 @@ interface OptimalSlot {
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+function PostImage({
+  src,
+  alt,
+  className,
+  fallbackClassName,
+}: {
+  src: string | null;
+  alt: string;
+  className: string;
+  fallbackClassName?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (!src || failed) {
+    return (
+      <div
+        className={fallbackClassName || `flex items-center justify-center bg-white/5 text-xs text-text-muted ${className}`}
+      >
+        Image unavailable
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function PostCard({
   post,
   optimalSlots,
@@ -121,11 +159,11 @@ function PostCard({
         {/* Image Preview */}
         {post.imageUrl ? (
           <div className="relative mb-4 overflow-hidden rounded-xl bg-white/5">
-            <img
+            <PostImage
               src={post.imageUrl}
               alt="Post image"
               className="h-48 w-full object-cover sm:h-56"
-              loading="lazy"
+              fallbackClassName="flex h-48 w-full items-center justify-center bg-white/5 text-xs text-text-muted sm:h-56"
             />
             {post.status !== 'published' && post.status !== 'scheduled' && (
               <button
@@ -401,7 +439,11 @@ function LinkedInPreview({ post }: { post: Post }) {
         {/* Image */}
         {post.imageUrl && (
           <div className="mb-3 overflow-hidden rounded-lg">
-            <img src={post.imageUrl} alt="" className="h-40 w-full object-cover" />
+            <PostImage
+              src={post.imageUrl}
+              alt="LinkedIn preview"
+              className="h-40 w-full object-cover"
+            />
           </div>
         )}
         {/* Engagement bar */}
@@ -441,7 +483,11 @@ function XPreview({ post }: { post: Post }) {
             {/* Image */}
             {post.imageUrl && (
               <div className="mt-3 overflow-hidden rounded-xl border border-white/10">
-                <img src={post.imageUrl} alt="" className="h-36 w-full object-cover" />
+                <PostImage
+                  src={post.imageUrl}
+                  alt="X preview"
+                  className="h-36 w-full object-cover"
+                />
               </div>
             )}
             {/* Engagement bar */}
@@ -473,8 +519,11 @@ export default function ContentStudioPage() {
     return (await auth.currentUser?.getIdToken()) || '';
   }, []);
 
-  const fetchPosts = useCallback(async () => {
-    setLoading(true);
+  const fetchPosts = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const token = await getToken();
       const params = new URLSearchParams({ status: activeTab });
@@ -489,7 +538,9 @@ export default function ContentStudioPage() {
     } catch (err) {
       console.error('Failed to fetch posts:', err);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [activeTab, getToken]);
 
@@ -515,13 +566,17 @@ export default function ContentStudioPage() {
     })();
   }, [getToken]);
 
-  // Poll for generating status updates
+  // Poll while content is actively moving through generation/review states.
+  // Without this, posts created shortly after topic approval can remain invisible
+  // until a manual refresh because the current tab may initially return zero rows.
   useEffect(() => {
-    if (activeTab !== 'generating' && posts.some((p) => p.status === 'generating')) {
-      const interval = setInterval(fetchPosts, 5000);
+    if (activeTab === 'review' || activeTab === 'generating') {
+      const interval = setInterval(() => {
+        fetchPosts({ silent: true });
+      }, 5000);
       return () => clearInterval(interval);
     }
-  }, [activeTab, posts, fetchPosts]);
+  }, [activeTab, fetchPosts]);
 
   const handleEditCaption = async (id: string, caption: string) => {
     const token = await getToken();
@@ -602,7 +657,9 @@ export default function ContentStudioPage() {
           </p>
         </div>
         <button
-          onClick={fetchPosts}
+          onClick={() => {
+            void fetchPosts();
+          }}
           className="glass rounded-lg px-4 py-2 text-sm text-text-muted transition-colors hover:text-white"
         >
           Refresh

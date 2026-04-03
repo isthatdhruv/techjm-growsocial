@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/auth-helpers'
 import { db, userAiKeys, userModelConfig, encryptApiKey } from '@techjm/db'
+import { validateProviderApiKey } from '@/lib/ai-provider'
+import { getResolvedProviderKeys } from '@/lib/ai-key-resolver'
 import { eq, and } from 'drizzle-orm'
 
 export async function GET(request: NextRequest) {
@@ -18,7 +20,10 @@ export async function GET(request: NextRequest) {
     },
   })
 
-  return NextResponse.json({ keys })
+  return NextResponse.json({
+    keys,
+    resolvedProviders: await getResolvedProviderKeys(user.id),
+  })
 }
 
 export async function PATCH(request: NextRequest) {
@@ -26,7 +31,7 @@ export async function PATCH(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { action, provider, apiKey } = body
+  const { action, provider, apiKey, baseUrl } = body
 
   if (!action || !provider) {
     return NextResponse.json({ error: 'action and provider required' }, { status: 400 })
@@ -38,7 +43,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Validate the key by testing provider API
-    const capabilities = await validateProviderKey(provider, apiKey)
+    const capabilities = await validateProviderKey(provider, apiKey, baseUrl)
     if (!capabilities) {
       return NextResponse.json({ error: 'Invalid API key — validation failed' }, { status: 400 })
     }
@@ -50,14 +55,20 @@ export async function PATCH(request: NextRequest) {
         userId: user.id,
         provider,
         apiKeyEnc: encrypted,
-        capabilities,
+        capabilities: {
+          ...capabilities,
+          ...(baseUrl ? { baseUrl } : {}),
+        },
         validatedAt: new Date(),
       })
       .onConflictDoUpdate({
         target: [userAiKeys.userId, userAiKeys.provider],
         set: {
           apiKeyEnc: encrypted,
-          capabilities,
+          capabilities: {
+            ...capabilities,
+            ...(baseUrl ? { baseUrl } : {}),
+          },
           validatedAt: new Date(),
         },
       })
@@ -91,11 +102,22 @@ export async function PATCH(request: NextRequest) {
 
     const { decryptApiKey } = await import('@techjm/db')
     const decrypted = decryptApiKey(existing.apiKeyEnc)
-    const capabilities = await validateProviderKey(provider, decrypted)
+    const existingCaps = (existing.capabilities as Record<string, unknown> | null) || {}
+    const capabilities = await validateProviderKey(
+      provider,
+      decrypted,
+      (existingCaps.baseUrl as string | undefined) || undefined,
+    )
 
     if (capabilities) {
       await db.update(userAiKeys)
-        .set({ capabilities, validatedAt: new Date() })
+        .set({
+          capabilities: {
+            ...capabilities,
+            ...(existingCaps.baseUrl ? { baseUrl: existingCaps.baseUrl } : {}),
+          },
+          validatedAt: new Date(),
+        })
         .where(eq(userAiKeys.id, existing.id))
     } else {
       return NextResponse.json({ error: 'Validation failed — key may be expired' }, { status: 400 })
@@ -116,102 +138,27 @@ export async function PATCH(request: NextRequest) {
     },
   })
 
-  return NextResponse.json({ keys })
+  return NextResponse.json({
+    keys,
+    resolvedProviders: await getResolvedProviderKeys(user.id),
+  })
 }
 
 async function validateProviderKey(
   provider: string,
   apiKey: string,
+  baseUrl?: string,
 ): Promise<Record<string, unknown> | null> {
   try {
-    switch (provider) {
-      case 'openai': {
-        const res = await fetch('https://api.openai.com/v1/models', {
-          headers: { Authorization: `Bearer ${apiKey}` },
-          signal: AbortSignal.timeout(10000),
-        })
-        if (!res.ok) return null
-        const data = await res.json()
-        const models = (data.data || []).map((m: { id: string }) => m.id)
-        return {
-          models: models.slice(0, 20),
-          image_gen: models.some((m: string) => m.includes('dall-e')),
-          web_search: false,
-        }
-      }
-      case 'anthropic': {
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 1,
-            messages: [{ role: 'user', content: 'test' }],
-          }),
-          signal: AbortSignal.timeout(15000),
-        })
-        // 200 or 400 (bad request but valid key) both indicate a valid key
-        if (res.status === 401 || res.status === 403) return null
-        return {
-          models: ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'],
-          image_gen: false,
-          web_search: true,
-        }
-      }
-      case 'google': {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`,
-          { signal: AbortSignal.timeout(10000) },
-        )
-        if (!res.ok) return null
-        return {
-          models: ['gemini-2.0-flash', 'gemini-2.5-pro'],
-          image_gen: false,
-          web_search: true,
-        }
-      }
-      case 'xai': {
-        const res = await fetch('https://api.x.ai/v1/models', {
-          headers: { Authorization: `Bearer ${apiKey}` },
-          signal: AbortSignal.timeout(10000),
-        })
-        if (!res.ok) return null
-        return {
-          models: ['grok-2', 'grok-2-mini'],
-          image_gen: false,
-          x_search: true,
-        }
-      }
-      case 'deepseek': {
-        const res = await fetch('https://api.deepseek.com/models', {
-          headers: { Authorization: `Bearer ${apiKey}` },
-          signal: AbortSignal.timeout(10000),
-        })
-        if (!res.ok) return null
-        return {
-          models: ['deepseek-chat', 'deepseek-reasoner'],
-          image_gen: false,
-          web_search: false,
-        }
-      }
-      case 'replicate': {
-        const res = await fetch('https://api.replicate.com/v1/account', {
-          headers: { Authorization: `Bearer ${apiKey}` },
-          signal: AbortSignal.timeout(10000),
-        })
-        if (!res.ok) return null
-        return {
-          models: [],
-          image_gen: true,
-          web_search: false,
-        }
-      }
-      default:
-        return null
+    const result = await validateProviderApiKey(provider as any, apiKey, baseUrl)
+    if (!result.valid) return null
+
+    return {
+      models: result.available_models,
+      available_models: result.available_models,
+      image_gen: result.image_gen,
+      web_search: result.web_search,
+      x_search: result.x_search,
     }
   } catch {
     return null

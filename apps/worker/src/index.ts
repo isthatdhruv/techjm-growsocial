@@ -1,5 +1,25 @@
-import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
+import { config as loadEnv } from 'dotenv';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, '../../..');
+
+for (const envPath of [
+  path.join(repoRoot, '.env'),
+  path.join(repoRoot, '.env.local'),
+  path.join(repoRoot, 'apps/worker/.env'),
+  path.join(repoRoot, 'apps/worker/.env.local'),
+  path.join(repoRoot, 'apps/web/.env'),
+  path.join(repoRoot, 'apps/web/.env.local'),
+]) {
+  if (existsSync(envPath)) {
+    loadEnv({ path: envPath, override: true, quiet: true });
+  }
+}
+
 import { Worker, Queue } from 'bullmq';
 import { connection, redis } from './redis.js';
 import { healthCheckQueue, QUEUE_NAMES } from './queues.js';

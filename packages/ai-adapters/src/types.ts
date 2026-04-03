@@ -1,5 +1,14 @@
 // === Provider Enum ===
-export type AIProvider = 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek' | 'mistral' | 'replicate';
+export type AIProvider =
+  | 'openai'
+  | 'anthropic'
+  | 'google'
+  | 'xai'
+  | 'deepseek'
+  | 'mistral'
+  | 'replicate'
+  | 'groq'
+  | 'openai_compatible';
 
 // === Adapter Capabilities (returned by testConnection) ===
 export interface AdapterCapabilities {
@@ -47,6 +56,7 @@ export interface NicheContext {
   competitors: { handle: string; platform: string }[];
   anti_topics: string[];
   recent_topics: string[];
+  focus_query?: string;
   grounding_data?: GroundingItem[];
 }
 
@@ -68,6 +78,7 @@ export interface SubAgentResult {
 
 // === Caption Generation ===
 export interface CaptionRequest {
+  niche: string;
   topic_title: string;
   topic_angle: string;
   platform: 'linkedin' | 'x';

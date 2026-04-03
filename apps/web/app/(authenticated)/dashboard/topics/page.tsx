@@ -42,6 +42,14 @@ type ScoredTopic = {
   suggestedPlatform: string | null;
 };
 
+type UploadSearchResult = {
+  chunkId: string;
+  documentId: string;
+  fileName: string;
+  content: string;
+  score: number;
+};
+
 const STATUS_TABS = ['pending', 'approved', 'rejected', 'all'] as const;
 const SORT_OPTIONS = [
   { value: 'score', label: 'Score' },
@@ -83,6 +91,7 @@ function TopicCard({
   const score = parseFloat(topic.finalScore || '0');
   const tier = topic.consensusTier || 'experimental';
   const tierBadge = TIER_BADGES[tier] || TIER_BADGES.experimental;
+  const canReview = topic.status === 'pending' || topic.status === 'scoring';
 
   const handleSaveEdit = () => {
     onSaveEdit(topic.id, editAngle);
@@ -105,7 +114,7 @@ function TopicCard({
           </span>
           <div className="text-right">
             <span className={`text-xl font-bold ${getScoreColor(score)}`}>
-              {topic.status === 'scoring' ? '...' : score.toFixed(2)}
+              {topic.status === 'scoring' || topic.finalScore === null ? '...' : score.toFixed(2)}
             </span>
             <p className="text-[10px] text-text-muted">score</p>
           </div>
@@ -225,7 +234,7 @@ function TopicCard({
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          {topic.status === 'pending' && (
+          {canReview && (
             <>
               <button
                 onClick={() => onApprove(topic.id)}
@@ -260,7 +269,7 @@ function TopicCard({
           {topic.status === 'scoring' && (
             <span className="flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-1 text-xs text-accent">
               <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
-              Scoring in progress...
+              Scoring in progress, but you can still review it.
             </span>
           )}
           <button
@@ -463,6 +472,17 @@ export default function TopicReviewPage() {
   const [sort, setSort] = useState('score');
   const [search, setSearch] = useState('');
   const [triggeringDiscovery, setTriggeringDiscovery] = useState(false);
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+  const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
+  const [activeDiscovery, setActiveDiscovery] = useState<{
+    runId: string;
+    mergeJobId: string | null;
+    slotsTotal: number;
+  } | null>(null);
+  const [discoverySource, setDiscoverySource] = useState<'web' | 'uploads' | 'both'>('web');
+  const [manualQuery, setManualQuery] = useState('');
+  const [uploadMatches, setUploadMatches] = useState<UploadSearchResult[]>([]);
+  const [manualSearching, setManualSearching] = useState(false);
   const [weightInfo, setWeightInfo] = useState<{
     isAdaptive: boolean;
     lastUpdated: string | null;
@@ -491,6 +511,7 @@ export default function TopicReviewPage() {
         const data = await res.json();
         setTopics(data.topics);
         setTotal(data.total);
+        setUploadMatches([]);
       }
     } catch (err) {
       console.error('Failed to fetch topics:', err);
@@ -502,6 +523,63 @@ export default function TopicReviewPage() {
   useEffect(() => {
     fetchTopics();
   }, [fetchTopics]);
+
+  useEffect(() => {
+    if (!activeDiscovery) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const token = await getToken();
+        const params = new URLSearchParams({
+          runId: activeDiscovery.runId,
+          slotsTotal: String(activeDiscovery.slotsTotal),
+          ...(activeDiscovery.mergeJobId ? { mergeJobId: activeDiscovery.mergeJobId } : {}),
+        });
+        const res = await fetch(`/api/discovery/status?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!res.ok || cancelled) return;
+
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (data.status === 'complete') {
+          setDiscoveryMessage(
+            data.topicsAfterMerge
+              ? `Discovery finished with ${data.topicsAfterMerge} topic${data.topicsAfterMerge === 1 ? '' : 's'}.`
+              : 'Discovery finished, but no topics survived merging.',
+          );
+          setActiveDiscovery(null);
+          fetchTopics();
+          return;
+        }
+
+        if (data.status === 'failed') {
+          setDiscoveryError(data.error || 'Discovery failed.');
+          setDiscoveryMessage(null);
+          setActiveDiscovery(null);
+          return;
+        }
+
+        setDiscoveryMessage(
+          `Discovery running: ${data.slotsCompleted || 0}/${data.slotsTotal || 0} slots complete, ${data.topicsFound || 0} topic${data.topicsFound === 1 ? '' : 's'} found so far.`,
+        );
+        window.setTimeout(poll, 3000);
+      } catch {
+        if (!cancelled) {
+          window.setTimeout(poll, 5000);
+        }
+      }
+    };
+
+    poll();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDiscovery, fetchTopics, getToken]);
 
   // Fetch weight learning info
   useEffect(() => {
@@ -527,10 +605,19 @@ export default function TopicReviewPage() {
 
   const handleApprove = async (id: string) => {
     const token = await getToken();
-    await fetch(`/api/topics/${id}/approve`, {
+    const res = await fetch(`/api/topics/${id}/approve`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      console.error('Failed to approve topic:', payload?.error || payload || '');
+      setDiscoveryError(payload?.error || 'Failed to approve topic.');
+      return;
+    }
+    if (payload?.message) {
+      setDiscoveryMessage(payload.message);
+    }
     setTopics((prev) => prev.map((t) => (t.id === id ? { ...t, status: 'approved' } : t)));
   };
 
@@ -558,14 +645,119 @@ export default function TopicReviewPage() {
 
   const handleRunDiscovery = async () => {
     setTriggeringDiscovery(true);
+    setDiscoveryError(null);
+    setDiscoveryMessage(null);
     try {
       const token = await getToken();
-      await fetch('/api/discovery/trigger', {
+      const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+      const isUploadMode = discoverySource === 'uploads';
+      const isCombinedMode = discoverySource === 'both';
+      const route = isUploadMode ? '/api/knowledge/discover' : '/api/discovery/trigger';
+      const trimmedQuery = manualQuery.trim();
+      const body =
+        isUploadMode || isCombinedMode
+          ? JSON.stringify({ query: trimmedQuery, save: true, source: discoverySource })
+          : trimmedQuery
+            ? JSON.stringify({ query: trimmedQuery })
+            : undefined;
+
+      const res = await fetch(route, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers,
+        ...(body ? { body } : {}),
       });
+
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        setDiscoveryError(payload?.error || 'Failed to start discovery.');
+        return;
+      }
+
+      if (isUploadMode) {
+        setDiscoveryMessage(
+          payload?.saved
+            ? `Created ${payload.saved} topic${payload.saved === 1 ? '' : 's'} from uploads.`
+            : 'Upload discovery completed.',
+        );
+        setActiveDiscovery(null);
+        fetchTopics();
+        return;
+      }
+
+      let combinedSaved = 0;
+      if (isCombinedMode) {
+        const uploadRes = await fetch('/api/knowledge/discover', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ query: trimmedQuery, save: true }),
+        });
+        const uploadPayload = await uploadRes.json().catch(() => null);
+        if (uploadRes.ok && uploadPayload?.saved) {
+          combinedSaved = uploadPayload.saved;
+        }
+      }
+
+      setDiscoveryMessage(
+        payload?.slotsQueued
+          ? `Discovery started across ${payload.slotsQueued} model slot${payload.slotsQueued === 1 ? '' : 's'}${payload?.focusQuery ? ` for "${payload.focusQuery}"` : ''}${combinedSaved ? ` and created ${combinedSaved} upload topic${combinedSaved === 1 ? '' : 's'}` : ''}.`
+          : 'Discovery started successfully.',
+      );
+      setActiveDiscovery(
+        payload?.discoveryRunId
+          ? {
+              runId: payload.discoveryRunId,
+              mergeJobId: payload?.mergeJobId || null,
+              slotsTotal: payload?.slotsQueued || 4,
+            }
+          : null,
+      );
+      fetchTopics();
+    } catch (err) {
+      console.error('Failed to trigger discovery:', err);
+      setDiscoveryError('Failed to start discovery. Please try again.');
     } finally {
       setTriggeringDiscovery(false);
+    }
+  };
+
+  const handleManualSearch = async () => {
+    if (!manualQuery.trim()) return;
+    setManualSearching(true);
+    setDiscoveryError(null);
+    setDiscoveryMessage(null);
+
+    try {
+      const token = await getToken();
+      const res = await fetch('/api/topics/search', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: manualQuery.trim(),
+          source: discoverySource === 'web' ? 'topics' : discoverySource,
+        }),
+      });
+
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        setDiscoveryError(payload?.error || 'Search failed.');
+        return;
+      }
+
+      setTopics(payload?.topics || []);
+      setTotal(payload?.topics?.length || 0);
+      setUploadMatches(payload?.uploads || []);
+      setDiscoveryMessage(
+        payload?.message ||
+          `Found ${(payload?.topics || []).length} topic match(es) and ${(payload?.uploads || []).length} upload match(es).`,
+      );
+    } catch (error) {
+      console.error('Manual search failed:', error);
+      setDiscoveryError('Search failed. Please try again.');
+    } finally {
+      setManualSearching(false);
     }
   };
 
@@ -595,8 +787,67 @@ export default function TopicReviewPage() {
           >
             {triggeringDiscovery ? 'Starting...' : 'Run Discovery'}
           </button>
+          <button
+            onClick={handleManualSearch}
+            disabled={manualSearching}
+            className="rounded-lg bg-white/5 px-4 py-2 text-sm text-text-muted transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
+          >
+            {manualSearching ? 'Searching...' : discoverySource === 'uploads' ? 'Search Uploads' : 'Search Topics'}
+          </button>
         </div>
       </div>
+
+      {discoveryError && (
+        <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {discoveryError}
+        </div>
+      )}
+
+      {discoveryMessage && (
+        <div className="mb-4 rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-300">
+          {discoveryMessage}
+        </div>
+      )}
+
+      <div className="mb-4 flex flex-col gap-3 rounded-xl border border-white/6 bg-white/[0.02] p-4 lg:flex-row">
+        <select
+          value={discoverySource}
+          onChange={(event) => setDiscoverySource(event.target.value as 'web' | 'uploads' | 'both')}
+          className="rounded-lg border border-white/10 bg-transparent px-3 py-2 text-sm text-white focus:border-accent/50 focus:outline-none"
+        >
+          <option value="web" className="bg-[#111125]">Web</option>
+          <option value="uploads" className="bg-[#111125]">Uploads</option>
+          <option value="both" className="bg-[#111125]">Both</option>
+        </select>
+        <input
+          value={manualQuery}
+          onChange={(event) => setManualQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              handleManualSearch();
+            }
+          }}
+          placeholder="Search topics, uploads, or focus discovery on a phrase"
+          className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-text-muted/40 focus:border-accent/50 focus:outline-none"
+        />
+      </div>
+
+      {uploadMatches.length > 0 && (
+        <div className="mb-6 grid gap-3 lg:grid-cols-2">
+          {uploadMatches.map((match) => (
+            <GlassCard key={match.chunkId} className="p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-widest text-text-muted/70">
+                  {match.fileName}
+                </p>
+                <span className="text-[11px] text-accent">score {match.score.toFixed(2)}</span>
+              </div>
+              <p className="text-sm leading-relaxed text-white/85">{match.content}</p>
+            </GlassCard>
+          ))}
+        </div>
+      )}
 
       {/* Filter bar */}
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

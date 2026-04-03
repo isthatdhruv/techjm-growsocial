@@ -1,6 +1,6 @@
 import { Worker, Queue } from 'bullmq';
 import type { Job, FlowJob } from 'bullmq';
-import { db, users, userModelConfig, userAiKeys } from '@techjm/db';
+import { db, users, getAvailableAiProviders, selectTextModel } from '@techjm/db';
 import { eq } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { flowProducer, QUEUE_NAMES } from '../../queues.js';
@@ -19,7 +19,6 @@ async function processDiscoveryCron(job: Job) {
     where: eq(users.onboardingStep, 'complete'),
     with: {
       modelConfig: true,
-      aiKeys: true,
     },
   });
 
@@ -29,27 +28,55 @@ async function processDiscoveryCron(job: Job) {
 
   for (const user of activeUsers) {
     const config = user.modelConfig;
-    if (!config) {
-      job.log(`User ${user.id}: no model config found, skipping`);
-      continue;
-    }
-
     // Build the slot configs from user's model_config
     const slots: { name: 'slot_a' | 'slot_b' | 'slot_c' | 'slot_d'; config: SlotConfig }[] = [];
 
-    if (config.slotA) slots.push({ name: 'slot_a', config: config.slotA as SlotConfig });
-    if (config.slotB) slots.push({ name: 'slot_b', config: config.slotB as SlotConfig });
-    if (config.slotC) slots.push({ name: 'slot_c', config: config.slotC as SlotConfig });
-    if (config.slotD) slots.push({ name: 'slot_d', config: config.slotD as SlotConfig });
+    if (config?.slotA) slots.push({ name: 'slot_a', config: config.slotA as SlotConfig });
+    if (config?.slotB) slots.push({ name: 'slot_b', config: config.slotB as SlotConfig });
+    if (config?.slotC) slots.push({ name: 'slot_c', config: config.slotC as SlotConfig });
+    if (config?.slotD) slots.push({ name: 'slot_d', config: config.slotD as SlotConfig });
+
+    const textProviders = (await getAvailableAiProviders(user.id)).filter(
+      (provider) => provider.provider !== 'replicate',
+    );
 
     if (slots.length === 0) {
-      job.log(`User ${user.id}: no slots configured, skipping`);
+      textProviders.slice(0, 4).forEach((provider, index) => {
+        slots.push({
+          name: (`slot_${String.fromCharCode(97 + index)}`) as 'slot_a' | 'slot_b' | 'slot_c' | 'slot_d',
+          config: {
+            provider: provider.provider,
+            model: selectTextModel(
+              provider.provider,
+              provider.models,
+              provider.models[0] || 'gpt-4o-mini',
+            ),
+          },
+        });
+      });
+    }
+
+    if (slots.length === 0) {
+      job.log(`User ${user.id}: no slots or fallback providers configured, skipping`);
       continue;
     }
 
-    // Verify user has API keys for the configured providers
-    const userKeyProviders = new Set(user.aiKeys.map((k) => k.provider));
-    const validSlots = slots.filter((s) => userKeyProviders.has(s.config.provider as any));
+    // Verify the user has an active key or env fallback for the configured providers
+    const availableProviderSet = new Set(textProviders.map((provider) => provider.provider));
+    let validSlots = slots.filter((s) => availableProviderSet.has(s.config.provider as any));
+    if (validSlots.length === 0) {
+      validSlots = textProviders.slice(0, 4).map((provider, index) => ({
+        name: (`slot_${String.fromCharCode(97 + index)}`) as 'slot_a' | 'slot_b' | 'slot_c' | 'slot_d',
+        config: {
+          provider: provider.provider,
+          model: selectTextModel(
+            provider.provider,
+            provider.models,
+            provider.models[0] || 'gpt-4o-mini',
+          ),
+        },
+      }));
+    }
 
     if (validSlots.length === 0) {
       job.log(`User ${user.id}: no slots have matching API keys, skipping`);

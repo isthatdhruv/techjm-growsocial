@@ -1,47 +1,20 @@
-'use client';
+import { cookies } from 'next/headers';
+import { AuthenticatedLayoutClient } from '@/app/components/auth/authenticated-layout-client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/use-auth';
-import { Sidebar } from '@/app/components/layout/sidebar';
-import { MobileNav } from '@/app/components/layout/mobile-nav';
+const AUTH_HINT_COOKIE = 'techjm_auth_hint';
+const ONBOARDING_HINT_COOKIE = 'techjm_onboarding_hint';
 
-export default function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, onboardingStep } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (loading) return;
-
-    if (!user) {
-      router.replace('/');
-      return;
-    }
-
-    if (onboardingStep && onboardingStep !== 'complete') {
-      router.replace('/onboarding');
-    }
-  }, [user, loading, onboardingStep, router]);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (!user) return null;
-  if (onboardingStep && onboardingStep !== 'complete') return null;
+export default async function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
+  const cookieStore = await cookies();
+  const hasSessionHint = cookieStore.get(AUTH_HINT_COOKIE)?.value === '1';
+  const onboardingStepHint = cookieStore.get(ONBOARDING_HINT_COOKIE)?.value ?? null;
 
   return (
-    <div className="min-h-screen bg-grid">
-      <Sidebar />
-      <MobileNav />
-      {/* Main content: offset for sidebar on desktop, offset for mobile nav on mobile */}
-      <main className="min-h-screen pt-14 lg:ml-60 lg:pt-0">
-        {children}
-      </main>
-    </div>
+    <AuthenticatedLayoutClient
+      hasSessionHint={hasSessionHint}
+      onboardingStepHint={onboardingStepHint}
+    >
+      {children}
+    </AuthenticatedLayoutClient>
   );
 }

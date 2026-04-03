@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, text, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
-import { users } from './auth';
-import { aiProviderEnum, consensusTierEnum } from './_enums';
+import { users } from './auth.js';
+import { aiProviderEnum, consensusTierEnum } from './_enums.js';
 
 export { consensusTierEnum };
 

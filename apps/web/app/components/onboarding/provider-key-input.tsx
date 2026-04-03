@@ -17,6 +17,8 @@ const keyUrls: Record<string, string> = {
   deepseek: 'https://platform.deepseek.com/api_keys',
   mistral: 'https://console.mistral.ai/api-keys',
   replicate: 'https://replicate.com/account/api-tokens',
+  groq: 'https://console.groq.com/keys',
+  openai_compatible: '#',
 };
 
 const providerLabels: Record<string, string> = {
@@ -27,6 +29,8 @@ const providerLabels: Record<string, string> = {
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
   replicate: 'Replicate',
+  groq: 'Groq',
+  openai_compatible: 'OpenAI-Compatible',
 };
 
 export function ProviderKeyInput({
@@ -37,6 +41,8 @@ export function ProviderKeyInput({
   error,
   apiKey,
   onApiKeyChange,
+  baseUrl,
+  onBaseUrlChange,
 }: {
   provider: string;
   recommended?: boolean;
@@ -45,6 +51,8 @@ export function ProviderKeyInput({
   error: string | null;
   apiKey: string;
   onApiKeyChange: (key: string) => void;
+  baseUrl?: string;
+  onBaseUrlChange?: (baseUrl: string) => void;
 }) {
   const [showKey, setShowKey] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -74,14 +82,18 @@ export function ProviderKeyInput({
             </span>
           )}
         </div>
-        <a
-          href={keyUrls[provider]}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-text-muted hover:text-accent"
-        >
-          Get a key &rarr;
-        </a>
+        {keyUrls[provider] === '#' ? (
+          <span className="text-xs text-text-muted">Custom compatible endpoint</span>
+        ) : (
+          <a
+            href={keyUrls[provider]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-text-muted hover:text-accent"
+          >
+            Get a key &rarr;
+          </a>
+        )}
       </div>
 
       <div className="flex gap-2">
@@ -127,6 +139,18 @@ export function ProviderKeyInput({
           )}
         </button>
       </div>
+
+      {provider === 'openai_compatible' && onBaseUrlChange ? (
+        <div className="mt-2">
+          <input
+            type="url"
+            value={baseUrl || ''}
+            onChange={(e) => onBaseUrlChange(e.target.value)}
+            placeholder="https://your-provider.example.com/v1"
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-text-muted/30 focus:border-accent/40 focus:outline-none"
+          />
+        </div>
+      ) : null}
 
       {/* Status area */}
       <div className="mt-2.5">
