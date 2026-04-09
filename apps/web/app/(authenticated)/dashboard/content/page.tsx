@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/use-auth';
+import { AddToSheetsButton } from '@/app/components/add-to-sheets-button';
 import { GlassCard } from '@/app/components/glass-card';
 
 type Post = {
@@ -56,6 +57,17 @@ interface OptimalSlot {
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+function getDefaultSheetTimestamp(scheduledAt: string | null) {
+  if (scheduledAt) {
+    return scheduledAt;
+  }
+
+  const nextDay = new Date();
+  nextDay.setDate(nextDay.getDate() + 1);
+  nextDay.setHours(9, 0, 0, 0);
+  return nextDay.toISOString();
+}
+
 function PostImage({
   src,
   alt,
@@ -76,7 +88,10 @@ function PostImage({
   if (!src || failed) {
     return (
       <div
-        className={fallbackClassName || `flex items-center justify-center bg-white/5 text-xs text-text-muted ${className}`}
+        className={
+          fallbackClassName ||
+          `flex items-center justify-center bg-white/5 text-xs text-text-muted ${className}`
+        }
       >
         Image unavailable
       </div>
@@ -84,19 +99,14 @@ function PostImage({
   }
 
   return (
-    <img
-      src={src}
-      alt={alt}
-      className={className}
-      loading="lazy"
-      onError={() => setFailed(true)}
-    />
+    <img src={src} alt={alt} className={className} loading="lazy" onError={() => setFailed(true)} />
   );
 }
 
 function PostCard({
   post,
   optimalSlots,
+  getToken,
   onEditCaption,
   onRegenerateImage,
   onSchedule,
@@ -105,6 +115,7 @@ function PostCard({
 }: {
   post: Post;
   optimalSlots: OptimalSlot[];
+  getToken: () => Promise<string>;
   onEditCaption: (id: string, caption: string) => void;
   onRegenerateImage: (id: string) => void;
   onSchedule: (id: string, scheduledAt: string) => void;
@@ -124,6 +135,7 @@ function PostCard({
   const charCount = post.caption.length;
   const hashtagCount = (post.hashtags as string[] | null)?.length || 0;
   const score = post.finalScore ? parseFloat(post.finalScore).toFixed(2) : null;
+  const sheetsTimestamp = getDefaultSheetTimestamp(post.scheduledAt);
 
   const handleSaveCaption = () => {
     onEditCaption(post.id, editCaption);
@@ -170,8 +182,18 @@ function PostCard({
                 onClick={() => onRegenerateImage(post.id)}
                 className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-lg bg-black/60 px-3 py-1.5 text-xs text-white backdrop-blur-sm transition-colors hover:bg-black/80"
               >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182M2.985 19.644v-4.992" />
+                <svg
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182M2.985 19.644v-4.992"
+                  />
                 </svg>
                 Regenerate
               </button>
@@ -232,8 +254,18 @@ function PostCard({
                 onClick={() => setEditing(true)}
                 className="mt-2 flex items-center gap-1 text-xs text-text-muted hover:text-accent"
               >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z" />
+                <svg
+                  className="h-3 w-3"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z"
+                  />
                 </svg>
                 Edit Caption
               </button>
@@ -243,9 +275,7 @@ function PostCard({
 
         {/* Meta info */}
         <div className="mb-4 flex flex-wrap items-center gap-3 text-[11px] text-text-muted">
-          <span>
-            {platform === 'x' ? `${charCount} chars` : `${wordCount} words`}
-          </span>
+          <span>{platform === 'x' ? `${charCount} chars` : `${wordCount} words`}</span>
           <span className="text-white/10">|</span>
           <span>{hashtagCount} hashtags</span>
           {post.topicTitle && (
@@ -267,8 +297,18 @@ function PostCard({
         {/* Scheduled time display */}
         {post.scheduledAt && post.status === 'scheduled' && (
           <div className="mb-4 flex items-center gap-2 rounded-lg bg-blue-500/10 px-3 py-2 text-xs text-blue-400">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.5}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+              />
             </svg>
             Scheduled for {new Date(post.scheduledAt).toLocaleString()}
           </div>
@@ -281,7 +321,9 @@ function PostCard({
             {/* Optimal time suggestions */}
             {optimalSlots.length > 0 && (
               <div className="mb-3">
-                <p className="mb-2 text-[11px] text-text-muted/60">Suggested times (based on your engagement data)</p>
+                <p className="mb-2 text-[11px] text-text-muted/60">
+                  Suggested times (based on your engagement data)
+                </p>
                 <div className="flex flex-wrap gap-1.5">
                   {optimalSlots.slice(0, 3).map((slot, i) => {
                     // Find the next occurrence of this day+hour
@@ -365,8 +407,18 @@ function PostCard({
               onClick={() => setShowSchedule(true)}
               className="flex items-center gap-1.5 rounded-lg bg-blue-500/15 px-4 py-2 text-sm font-medium text-blue-400 transition-colors hover:bg-blue-500/25"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"
+                />
               </svg>
               Schedule
             </button>
@@ -374,18 +426,48 @@ function PostCard({
               onClick={() => onPublishNow(post.id)}
               className="flex items-center gap-1.5 rounded-lg bg-green-500/15 px-4 py-2 text-sm font-medium text-green-400 transition-colors hover:bg-green-500/25"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
+                />
               </svg>
               Publish Now
             </button>
+            <AddToSheetsButton
+              getToken={getToken}
+              payload={{
+                platform: post.platform === 'x' ? 'Twitter' : 'LinkedIn',
+                content: post.caption,
+                timestamp: sheetsTimestamp,
+                imageUrl: post.imageUrl,
+              }}
+              className="flex items-center gap-1.5 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+            />
             {!confirmDelete ? (
               <button
                 onClick={() => setConfirmDelete(true)}
                 className="ml-auto rounded-lg bg-white/5 px-3 py-2 text-sm text-text-muted/60 transition-colors hover:bg-red-500/10 hover:text-red-400"
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                  />
                 </svg>
               </button>
             ) : (
@@ -505,7 +587,7 @@ function XPreview({ post }: { post: Post }) {
 }
 
 export default function ContentStudioPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -514,42 +596,63 @@ export default function ContentStudioPage() {
   const [optimalSlots, setOptimalSlots] = useState<OptimalSlot[]>([]);
 
   const getToken = useCallback(async () => {
+    if (!user) return '';
     const { getAuth } = await import('firebase/auth');
     const auth = getAuth();
-    return (await auth.currentUser?.getIdToken()) || '';
-  }, []);
+    return (await auth.currentUser?.getIdToken(true)) || '';
+  }, [user]);
 
-  const fetchPosts = useCallback(async (options?: { silent?: boolean }) => {
-    const silent = options?.silent ?? false;
-    if (!silent) {
-      setLoading(true);
-    }
-    try {
-      const token = await getToken();
-      const params = new URLSearchParams({ status: activeTab });
-      const res = await fetch(`/api/posts?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPosts(data.posts);
-        setTotal(data.total);
+  const fetchPosts = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (authLoading) {
+        return;
       }
-    } catch (err) {
-      console.error('Failed to fetch posts:', err);
-    } finally {
-      if (!silent) {
+
+      if (!user) {
+        setPosts([]);
+        setTotal(0);
         setLoading(false);
+        return;
       }
-    }
-  }, [activeTab, getToken]);
+
+      const silent = options?.silent ?? false;
+      if (!silent) {
+        setLoading(true);
+      }
+      try {
+        const token = await getToken();
+        const params = new URLSearchParams({ status: activeTab });
+        const res = await fetch(`/api/posts?${params}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setPosts(data.posts);
+          setTotal(data.total);
+        }
+      } catch (err) {
+        console.error('Failed to fetch posts:', err);
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [activeTab, authLoading, getToken, user],
+  );
 
   useEffect(() => {
+    if (authLoading) {
+      return;
+    }
     fetchPosts();
-  }, [fetchPosts]);
+  }, [authLoading, fetchPosts]);
 
   // Fetch optimal posting times from learning data
   useEffect(() => {
+    if (authLoading || !user) {
+      return;
+    }
     (async () => {
       try {
         const token = await getToken();
@@ -564,19 +667,22 @@ export default function ContentStudioPage() {
         // Non-critical
       }
     })();
-  }, [getToken]);
+  }, [authLoading, getToken, user]);
 
   // Poll while content is actively moving through generation/review states.
   // Without this, posts created shortly after topic approval can remain invisible
   // until a manual refresh because the current tab may initially return zero rows.
   useEffect(() => {
+    if (authLoading || !user) {
+      return;
+    }
     if (activeTab === 'review' || activeTab === 'generating') {
       const interval = setInterval(() => {
         fetchPosts({ silent: true });
       }, 5000);
       return () => clearInterval(interval);
     }
-  }, [activeTab, fetchPosts]);
+  }, [activeTab, authLoading, fetchPosts, user]);
 
   const handleEditCaption = async (id: string, caption: string) => {
     const token = await getToken();
@@ -732,6 +838,7 @@ export default function ContentStudioPage() {
                     <PostCard
                       post={post}
                       optimalSlots={optimalSlots}
+                      getToken={getToken}
                       onEditCaption={handleEditCaption}
                       onRegenerateImage={handleRegenerateImage}
                       onSchedule={handleSchedule}
@@ -740,9 +847,7 @@ export default function ContentStudioPage() {
                     />
                     {/* Preview toggle */}
                     <button
-                      onClick={() =>
-                        setPreviewPost(previewPost?.id === post.id ? null : post)
-                      }
+                      onClick={() => setPreviewPost(previewPost?.id === post.id ? null : post)}
                       className="mt-2 text-[11px] text-text-muted/40 hover:text-text-muted"
                     >
                       {previewPost?.id === post.id ? 'Hide Preview' : 'Show Platform Preview'}

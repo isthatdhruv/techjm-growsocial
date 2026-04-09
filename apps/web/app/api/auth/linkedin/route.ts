@@ -84,11 +84,16 @@ async function startLinkedInOAuth(request: NextRequest) {
     fallbackReturnTo: '/onboarding/step-4',
   });
 
+  // Request org scopes only for an explicit org-auth flow.
+  const includeOrganizationScopes =
+    isLinkedInOrganizationScopesEnabled() &&
+    request.nextUrl.searchParams.get('organization') === '1';
+
   const authorizeUrl = buildLinkedInAuthorizeUrl({
     clientId: config.clientId,
     redirectUri: config.redirectUri,
     state: context.state,
-    includeOrganizationScopes: isLinkedInOrganizationScopesEnabled(),
+    includeOrganizationScopes,
   });
 
   logSocialConnectStart('linkedin', {
