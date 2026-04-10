@@ -119,7 +119,7 @@ function PostCard({
   onEditCaption: (id: string, caption: string) => void;
   onRegenerateImage: (id: string) => void;
   onSchedule: (id: string, scheduledAt: string) => void;
-  onPublishNow: (id: string) => void;
+  onPublishNow: (post: Post) => void;
   onDelete: (id: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -423,7 +423,7 @@ function PostCard({
               Schedule
             </button>
             <button
-              onClick={() => onPublishNow(post.id)}
+              onClick={() => onPublishNow(post)}
               className="flex items-center gap-1.5 rounded-lg bg-green-500/15 px-4 py-2 text-sm font-medium text-green-400 transition-colors hover:bg-green-500/25"
             >
               <svg
@@ -599,7 +599,12 @@ export default function ContentStudioPage() {
     if (!user) return '';
     const { getAuth } = await import('firebase/auth');
     const auth = getAuth();
-    return (await auth.currentUser?.getIdToken(true)) || '';
+    try {
+      return (await auth.currentUser?.getIdToken()) || '';
+    } catch (error) {
+      console.error('Failed to get Firebase auth token:', error);
+      return '';
+    }
   }, [user]);
 
   const fetchPosts = useCallback(
@@ -621,6 +626,10 @@ export default function ContentStudioPage() {
       }
       try {
         const token = await getToken();
+        if (!token) {
+          setLoading(false);
+          return;
+        }
         const params = new URLSearchParams({ status: activeTab });
         const res = await fetch(`/api/posts?${params}`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -656,6 +665,7 @@ export default function ContentStudioPage() {
     (async () => {
       try {
         const token = await getToken();
+        if (!token) return;
         const res = await fetch('/api/analytics/learning', {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -686,6 +696,10 @@ export default function ContentStudioPage() {
 
   const handleEditCaption = async (id: string, caption: string) => {
     const token = await getToken();
+    if (!token) {
+      alert('Your session expired. Please sign in again.');
+      return;
+    }
     await fetch(`/api/posts/${id}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -696,6 +710,10 @@ export default function ContentStudioPage() {
 
   const handleRegenerateImage = async (id: string) => {
     const token = await getToken();
+    if (!token) {
+      alert('Your session expired. Please sign in again.');
+      return;
+    }
     await fetch(`/api/posts/${id}/regenerate-image`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
@@ -707,6 +725,10 @@ export default function ContentStudioPage() {
 
   const handleSchedule = async (id: string, scheduledAt: string) => {
     const token = await getToken();
+    if (!token) {
+      alert('Your session expired. Please sign in again.');
+      return;
+    }
     await fetch(`/api/posts/${id}/schedule`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -717,22 +739,69 @@ export default function ContentStudioPage() {
     );
   };
 
-  const handlePublishNow = async (id: string) => {
+  const handlePublishNow = async (post: Post) => {
     if (!confirm('Publish this post now?')) return;
     const token = await getToken();
-    await fetch(`/api/posts/${id}/publish-now`, {
+    if (!token) {
+      alert('Your session expired. Please sign in again.');
+      return;
+    }
+
+    if (post.platform === 'linkedin') {
+      const hashtags = (post.hashtags || []).join(' ');
+      const response = await fetch('/api/publish-linkedin', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: post.caption,
+          hashtags,
+        }),
+      });
+
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        alert(data?.error || 'LinkedIn automation failed.');
+        return;
+      }
+
+      alert('Posted to LinkedIn successfully.');
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === post.id
+            ? { ...p, status: 'published', publishedAt: new Date().toISOString() }
+            : p,
+        ),
+      );
+      return;
+    }
+
+    const response = await fetch(`/api/posts/${post.id}/publish-now`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      alert(data?.error || 'Failed to publish now.');
+      return;
+    }
+
+    alert('Publishing now...');
     setPosts((prev) =>
       prev.map((p) =>
-        p.id === id ? { ...p, status: 'scheduled', scheduledAt: new Date().toISOString() } : p,
+        p.id === post.id ? { ...p, status: 'scheduled', scheduledAt: new Date().toISOString() } : p,
       ),
     );
   };
 
   const handleDelete = async (id: string) => {
     const token = await getToken();
+    if (!token) {
+      alert('Your session expired. Please sign in again.');
+      return;
+    }
     await fetch(`/api/posts/${id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
